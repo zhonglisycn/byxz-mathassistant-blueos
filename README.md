@@ -44,6 +44,21 @@ pnpm lint
 `.ide/settings.json`，把里面 watch-square 的分辨率改成 `432*514`，预览就和 GT2 一致。
 打包在工具栏「打包」，首次要生成签名；装表用 OrbitV 蓝牙推 rpk。
 
+也可以命令行打包（blueos-pack 是 Studio 自带的，不用另装）：
+
+```bash
+PACK="<Studio>/resources/app/extensions/blueos-debugger/node_modules/blueos-pack/bin/index.js"
+node "$PACK" build   --device-type watch-square   # 调试包，免签名
+node "$PACK" release --device-type watch-square   # 发布包，需要 sign/ 下的证书
+
+# 首次出 release 包前，生成一对自签名证书（MSYS_NO_PATHCONV=1 别漏）：
+MSYS_NO_PATHCONV=1 openssl req -x509 -newkey rsa:2048 -nodes \
+  -keyout sign/private.pem -out sign/certificate.pem -days 3650 \
+  -subj "/C=CN/O=byxz/CN=com.byxz.mathassistant"
+```
+
+产物在 `dist/watch-square/debug|release/`：debug 约 210KB，release 约 89KB。
+
 ## 已知问题
 
 - 只在模拟器和 GT2 真机上试过。存储和震动两个接口写的是最坏情况能降级的形式，
