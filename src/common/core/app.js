@@ -21,9 +21,12 @@ const app = {
     loadKey('ma_vib', (ok, v) => { this.vib = ok ? v === '1' : true; done() })
   },
 
-  /** 轻振动（开关关掉时静默） */
+  /** 轻振动（开关关掉时静默；80ms 节流，连打键盘不每键一震） */
   tap() {
     if (!this.vib) return
+    const now = Date.now()
+    if (this.lastVib && now - this.lastVib < 80) return
+    this.lastVib = now
     try { vibrator.vibrate({ mode: 'short' }) } catch (e) { /* 部分机型不支持，忽略 */ }
   },
 

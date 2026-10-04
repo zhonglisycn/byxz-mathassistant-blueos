@@ -222,7 +222,7 @@
         <div class="prow">
           <div class="key" @click="quickN('80')"><text class="t-key-md" style="color: #32a3ff">80</text></div>
           <div class="key" @click="quickN('200')"><text class="t-key-md" style="color: #32a3ff">200</text></div>
-          <div class="key" @click="quickN('300')"><text class="t-key-md" style="color: #32a3ff">300</text></div>
+          <div class="key" @click="quickN('120')"><text class="t-key-md" style="color: #32a3ff">120</text></div>
           <div class="key" @click="quickN('401')"><text class="t-key-md" style="color: #32a3ff">401</text></div>
         </div>
       </div>
@@ -320,8 +320,9 @@ const cell = (v) => (isFinite(v) ? brief(v) : '—')
 export default {
   data: {
     paintMode: 'balanced', paintNote: '',
-    nPoint: 200, nText: '200', nBuf: '', nEdit: false, nHint: '20~401 · 点按输入，越少越流畅',
+    nPoint: 120, nText: '120', nBuf: '', nEdit: false, nHint: '20~401 · 点按输入，越少越流畅',
     xEdit: false, xBuf: '',
+    debTimer: 0, deferTimer: 0, pendingUpdate: false,
     keys: [],
     list: [],
     presetIdx: 1,
@@ -377,14 +378,18 @@ export default {
     })
     loadKey('ma_plot_n', function (ok, v) {
       const n = ok ? parseInt(v, 10) : NaN
-      const p = isNaN(n) ? 200 : Math.max(20, Math.min(401, n))
+      const p = isNaN(n) ? 120 : Math.max(20, Math.min(401, n))
       self0.nPoint = p
       self0.nText = String(p)
     })
+    if (this.pendingUpdate) {
+      this.pendingUpdate = false
+      this.update()
+    }
   },
 
-  /** 离开页面时停掉未画完的定时器，别让回调打到已销毁的页面上 */
-  onHide() { this.stopPaint() },
+  /** 离开页面时清掉所有定时器，别让回调打到已销毁的页面上（真机上这类回调会把应用带崩） */
+  onHide() { this.clearTimers() },
 
 
   refreshPretty() {
@@ -408,8 +413,16 @@ export default {
     }
   },
 
-  /** 重画 + 取点：每次按键都调，所以是"边改边算" */
+  /** 重画入口：包一层 try/catch，绘制出错只显示错误，不把应用带崩 */
   update() {
+    try {
+      this.doUpdate()
+    } catch (e) {
+      this.info = '绘制出错：' + ((e && e.message) ? e.message : e)
+    }
+  },
+
+  doUpdate() {
     this.refreshPretty()
     const dr = this.derivative()
     this.canDiff = dr.ok
@@ -455,6 +468,16 @@ export default {
     const f = parsed.ok ? compileAst(parsed.ast) : null
     this.probe(f, dr.ok ? dr.f : null, p)
 
+    // 值表只在「值表」页可见时才算（24 行的求值以前是每次 update 都白算）
+    if (this.tab === 'table') this.refreshTable()
+  },
+
+  /** 值表：24 行 x / f(x) / f′(x)（切换 tab 时才算） */
+  refreshTable() {
+    const r = RANGES[this.range]
+    const parsed = parseExpr(this.expr)
+    const dr = this.derivative()
+    const f = parsed.ok ? compileAst(parsed.ast) : null
     const t = parsed.ok
       ? tableFn(f, { xmin: -r.k, xmax: r.k, step: r.step, maxRows: 24, f2: dr.ok ? dr.f : null })
       : { ok: false, rows: [] }
@@ -493,9 +516,9 @@ export default {
   /** 分档：每批画多少条竖段、隔多久画下一批。保守最不容易卡，激进最快画完 */
   paintProfile() {
     const m = this.paintMode
-    if (m === 'safe') return { step: 10, delay: 26, name: '保守' }
-    if (m === 'fast') return { step: 60, delay: 6, name: '激进' }
-    return { step: 24, delay: 16, name: '均衡' }
+    if (m === 'safe') return { step: 16, delay: 24, name: '保守' }
+    if (m === 'fast') return { step: 80, delay: 6, name: '激进' }
+    return { step: 40, delay: 14, name: '均衡' }
   },
 
   setPaintMode(m) {
@@ -598,7 +621,51 @@ export default {
     this.nPoint = n
     this.nText = String(n)
     saveKey('ma_plot_n', this.nText, null)
-    this.update()
+    const self = this
+    this.defer(function () { self.update() })
+  },
+
+  /** 下一拍再干重活：先让"收键盘/改状态"这一帧渲染完，避免长帧（真机上长帧会卡甚至重启） */
+  defer(fn) {
+    this.clearDefer()
+    const self = this
+    this.deferTimer = setTimeout(function () {
+      self.deferTimer = 0
+      fn()
+    }, 60)
+  },
+
+  clearDefer() {
+    if (this.deferTimer) {
+      clearTimeout(this.deferTimer)
+      this.deferTimer = 0
+    }
+  },
+
+  /** 离开页面：停绘制 + 清定时器；被丢掉的更新记为待办，回来时补一次 */
+  clearTimers() {
+    this.stopPaint()
+    if (this.deferTimer) {
+      clearTimeout(this.deferTimer)
+      this.deferTimer = 0
+      this.pendingUpdate = true
+    }
+    if (this.debTimer) {
+      clearTimeout(this.debTimer)
+      this.debTimer = 0
+      this.pendingUpdate = true
+    }
+  },
+
+  /** 输入表达式：先只更新表达式行，重算重画 debounce 180ms 合并（连打不卡） */
+  scheduleUpdate() {
+    this.refreshPretty()
+    if (this.debTimer) clearTimeout(this.debTimer)
+    const self = this
+    this.debTimer = setTimeout(function () {
+      self.debTimer = 0
+      self.update()
+    }, 180)
   },
 
   prevN() {
@@ -634,9 +701,7 @@ export default {
     this.nEdit = false
     this.resetScroll()
     if (isNaN(v)) return
-    const self = this
-    // 先让键盘收起、页面重排完，下一拍再重算重画——不然收键盘那一下会卡黑
-    setTimeout(function () { self.setN(v) }, 60)
+    this.setN(v)
   },
 
   /** 快捷值：直接套用并关闭键盘 */
@@ -644,8 +709,7 @@ export default {
     appGlobal.tap()
     this.nEdit = false
     this.resetScroll()
-    const self = this
-    setTimeout(function () { self.setN(parseInt(v, 10)) }, 60)
+    this.setN(parseInt(v, 10))
   },
 
   /** 唤出取点 x 的数字键盘（可输负号与小数） */
@@ -682,7 +746,7 @@ export default {
     const r = RANGES[this.range]
     this.probeX = Math.max(-r.k, Math.min(r.k, v))
     const self = this
-    setTimeout(function () { self.update() }, 60)
+    this.defer(function () { self.update() })
   },
 
   /** 收键盘后把滚动位置拉回顶部（运行时没有该能力就静默忽略） */
@@ -725,6 +789,7 @@ export default {
   toggleTab() {
     appGlobal.tap()
     this.tab = (this.tab === 'plot') ? 'table' : 'plot'
+    if (this.tab === 'table') this.refreshTable()
   },
 
   toggleEdit() {
@@ -734,7 +799,7 @@ export default {
       this.cur = this.expr.length
       this.resetScroll()
       const self = this
-      setTimeout(function () { self.update() }, 60)
+      this.defer(function () { self.update() })
       return
     }
     this.nEdit = false
@@ -749,7 +814,7 @@ export default {
     appGlobal.tap()
     const d = descOf(k)
     this.desc = d ? (k + '：' + d) : ''
-    if (k === 'C') { this.expr = ''; this.cur = 0; this.update(); return }
+    if (k === 'C') { this.expr = ''; this.cur = 0; this.scheduleUpdate(); return }
     if (k === '◀') { if (this.cur > 0) this.cur--; this.refreshPretty(); return }
     if (k === '▶') { if (this.cur < this.expr.length) this.cur++; this.refreshPretty(); return }
     if (k === '←') {
@@ -757,7 +822,7 @@ export default {
         this.expr = this.expr.slice(0, this.cur - 1) + this.expr.slice(this.cur)
         this.cur--
       }
-      this.update()
+      this.scheduleUpdate()
       return
     }
     const add = APPEND[k] || k
@@ -765,7 +830,7 @@ export default {
       this.expr = this.expr.slice(0, this.cur) + add + this.expr.slice(this.cur)
       this.cur += add.length
     }
-    this.update()
+    this.scheduleUpdate()
   },
 
   /** 收掉任何开着的键盘（三者互斥，不区分优先级） */
@@ -778,7 +843,7 @@ export default {
     this.resetScroll()
     if (wasEditing) {
       const self = this
-      setTimeout(function () { self.update() }, 60)
+      this.defer(function () { self.update() })
     }
   },
 
