@@ -1,0 +1,9 @@
+<script>
+  import appGlobal from './common/core/app.js'
+
+  export default {
+    onCreate() {
+      appGlobal.init()
+    },
+  }
+</script>

@@ -1,0 +1,151 @@
+<template>
+  <div class="page">
+    <scroll class="scroll" scroll-y>
+
+    <div class="toptitle">
+      <text class="t-title" style="font-size: 31px">设置</text>
+
+
+    </div>
+
+
+    <div class="topnav">
+      <text class="t-nav" style="font-size: 29px; height: 61px" @click="back">‹ 返回</text>
+
+
+    </div>
+
+      <text class="sec" style="font-size: 23px">计算设置</text>
+
+      <!-- 功能项 + ‹ 值 ›（设计稿里的开关行） -->
+      <div class="row">
+        <div class="row-main">
+          <text class="row-title" style="font-size: 31px">角度模式</text>
+          <text class="row-sub" style="font-size: 23px">{{deg ? 'sin 90 = 1' : 'sin π/2 = 1'}}</text>
+        </div>
+        <div class="seg">
+          <div class="seg-btn" @click="flipDeg"><text class="t-seg t-icon">‹</text></div>
+          <text class="seg-val" style="font-size: 27px">{{deg ? '角度' : '弧度'}}</text>
+          <div class="seg-btn" @click="flipDeg"><text class="t-seg t-icon">›</text></div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="row-main">
+          <text class="row-title" style="font-size: 31px">精确显示</text>
+          <text class="row-sub" style="font-size: 23px">{{exact ? '优先 π、√2、分数' : '显示小数'}}</text>
+        </div>
+        <div class="seg">
+          <div class="seg-btn" @click="flipExact"><text class="t-seg t-icon">‹</text></div>
+          <text class="seg-val" style="font-size: 27px">{{exact ? '精确' : '小数'}}</text>
+          <div class="seg-btn" @click="flipExact"><text class="t-seg t-icon">›</text></div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="row-main">
+          <text class="row-title" style="font-size: 31px">按键震动</text>
+          <text class="row-sub" style="font-size: 23px">按下时轻震一下</text>
+        </div>
+        <div class="seg">
+          <div class="seg-btn" @click="flipVib"><text class="t-seg t-icon">‹</text></div>
+          <text class="seg-val" style="font-size: 27px">{{vib ? '开' : '关'}}</text>
+          <div class="seg-btn" @click="flipVib"><text class="t-seg t-icon">›</text></div>
+        </div>
+      </div>
+
+      <text class="sec" style="font-size: 23px">按键说明</text>
+      <div class="row" for="{{descs}}" tid="kd">
+        <div class="row-main">
+          <text class="row-title" style="font-size: 29px">{{$item.k}}</text>
+          <text class="row-sub" style="font-size: 23px">{{$item.d}}</text>
+        </div>
+      </div>
+
+      <text class="sec" style="font-size: 23px">关于</text>
+
+      <div class="row">
+        <div class="row-main">
+          <text class="row-title" style="font-size: 31px">数学助手 v1.6.0（GT2 移植）</text>
+          <text class="row-sub" style="font-size: 23px">计算器 · 方程求解 · 函数图像</text>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="row-main">
+          <text class="row-title" style="font-size: 29px">表达式支持</text>
+          <text class="row-sub" style="font-size: 23px">+ − × ÷ ^ % ! ° 与 π e；sin cos tan asin ln log √ abs 等；隐式乘法 2π、3(4+5)</text>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="row-main">
+          <text class="row-title" style="font-size: 29px">方程</text>
+          <text class="row-sub" style="font-size: 23px">可直接写 2x+3=7、x²−3x=−2、2(x+3)=x−1，自动展开移项化为一般式再解</text>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="row-main">
+          <text class="row-title" style="font-size: 29px">开源与致谢</text>
+          <text class="row-sub" style="font-size: 23px">MIT 许可。计算器界面与配色参考开源项目 Open_Modular_Boardgame_Companion（MIT，MinimumBubble11），界面布局参考其配套 UI 设计稿；表达式解析、方程求解、函数图像与求导为本工程自行实现。本版为 vivo WATCH GT 2（蓝河 BlueOS 3）移植版。</text>
+        </div>
+      </div>
+
+      <div class="count">
+        <text class="t-info" style="font-size: 23px">作者 模糊二维码byxz</text>
+      </div>
+      <div class="gap"></div>
+    </scroll>
+  </div>
+</template>
+
+<script>
+import router from '@blueos.app.appmanager.router'
+import appGlobal from '../../common/core/app.js'
+import { descList } from '../../common/core/keys.js'
+
+export default {
+  data: {
+    deg: false,
+    exact: false,
+    vib: true,
+    descs: descList(),
+  },
+
+  onShow() {
+    this.sync()
+  },
+
+  sync() {
+    const app = appGlobal
+    this.deg = !!app.deg
+    this.exact = !!app.exact
+    this.vib = !!app.vib
+  },
+
+  flipDeg() { const app = appGlobal; app.tap(); app.setDeg(!app.deg); this.sync() },
+  flipExact() { const app = appGlobal; app.tap(); app.setExact(!app.exact); this.sync() },
+  flipVib() { const app = appGlobal; app.tap(); app.setVib(!app.vib); this.sync() },
+
+
+  back() {
+    appGlobal.tap()
+    router.back()
+  }
+}
+</script>
+
+<style>
+  @import '../../common/style/base.css';
+
+  .count {
+    width: 100%;
+    height: 43px;
+    align-items: center;
+    justify-content: center;
+    margin-top: 11px;
+  }
+
+  .gap { width: 100%; height: 14px; }
+</style>

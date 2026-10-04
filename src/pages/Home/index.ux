@@ -1,0 +1,97 @@
+<template>
+  <div class="page">
+    <scroll class="scroll" scroll-y>
+
+    <div class="toptitle">
+      <text class="t-title" style="font-size: 32px">数学助手</text>
+
+
+    </div>
+
+
+    <div class="topnav">
+      <text class="t-nav" style="font-size: 29px; width: 108px; height: 61px"></text>
+      <text class="t-nav" @click="goAbout" style="font-size: 29px; height: 61px; text-align: right">设置</text>
+
+
+    </div>
+
+      <text class="sec" style="font-size: 23px">工具</text>
+
+      <div class="row" @click="goCalc">
+        <div class="row-main">
+          <text class="row-title" style="font-size: 31px">计算器</text>
+          <text class="row-sub" style="font-size: 23px">四则 · 函数 · 精确</text>
+        </div>
+        <text class="row-go t-icon">›</text>
+      </div>
+
+      <div class="row" @click="goEq">
+        <div class="row-main">
+          <text class="row-title" style="font-size: 31px">方程求解</text>
+          <text class="row-sub" style="font-size: 23px">一次 · 二次 · 联立</text>
+        </div>
+        <text class="row-go t-icon">›</text>
+      </div>
+
+      <div class="row" @click="goPlot">
+        <div class="row-main">
+          <text class="row-title" style="font-size: 31px">函数图像</text>
+          <text class="row-sub" style="font-size: 23px">常用函数 · 值表 · 求导</text>
+        </div>
+        <text class="row-go t-icon">›</text>
+      </div>
+
+      <text class="sec" style="font-size: 23px">当前设置</text>
+
+      <div class="row" @click="goAbout">
+        <div class="row-main">
+          <text class="row-title" style="font-size: 31px">{{degText}}</text>
+          <text class="row-sub" style="font-size: 23px">{{exactText}} · 震动{{vib ? '开' : '关'}}</text>
+        </div>
+        <text class="row-go t-icon">›</text>
+      </div>
+    </scroll>
+
+    <div class="foot">
+      <text class="t-info" style="font-size: 23px">byxz</text>
+    </div>
+  </div>
+</template>
+
+<script>
+import router from '@blueos.app.appmanager.router'
+import appGlobal from '../../common/core/app.js'
+
+export default {
+  data: {
+    degText: '弧度制',
+    exactText: '小数显示',
+    vib: true
+  },
+
+  onShow() {
+    const app = appGlobal
+    this.degText = app.deg ? '角度制' : '弧度制'
+    this.exactText = app.exact ? '精确显示' : '小数显示'
+    this.vib = !!app.vib
+  },
+
+  goCalc() { appGlobal.tap(); router.push({ uri: 'pages/Calc' }) },
+  goEq() { appGlobal.tap(); router.push({ uri: 'pages/Eq' }) },
+  goPlot() { appGlobal.tap(); router.push({ uri: 'pages/Plot' }) },
+  goAbout() { appGlobal.tap(); router.push({ uri: 'pages/About' }) }
+}
+</script>
+
+<style>
+  @import '../../common/style/base.css';
+
+  .foot {
+    width: 100%;
+    height: 40px;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+</style>

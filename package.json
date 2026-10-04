@@ -1,0 +1,27 @@
+{
+  "name": "gt2-math",
+  "version": "1.0.0",
+  "packageManager": "pnpm@^9.9.0",
+  "description": "数学助手（vivo WATCH GT 2 移植版）：计算器 / 方程求解 / 函数图像",
+  "scripts": {
+    "gen": "node ./scripts/gen/index.js",
+    "lint": "eslint --ext .ux,.js src/",
+    "test": "bash tools/run-tests.sh"
+  },
+  "prettier": {
+    "singleQuote": true,
+    "semi": false,
+    "printWidth": 100,
+    "tabWidth": 2,
+    "bracketSameLine": true,
+    "htmlWhitespaceSensitivity": "ignore",
+    "vueIndentScriptAndStyle": true,
+    "trailingComma": "es5"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.2.0",
+    "eslint": "^7.32.0",
+    "eslint-plugin-json": "^1.4.0",
+    "eslint-plugin-vue": "^9.26.0"
+  }
+}

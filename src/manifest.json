@@ -1,0 +1,51 @@
+{
+  "package": "com.byxz.mathassistant",
+  "name": "数学助手",
+  "versionName": "1.6.0",
+  "versionCode": 160,
+  "appCategory": [
+    "utilities"
+  ],
+  "icon": "/common/icon/logo.png",
+  "features": [
+    {
+      "name": "blueos.app.appmanager.router"
+    },
+    {
+      "name": "blueos.storage.storage"
+    },
+    {
+      "name": "blueos.hardware.vibrator.vibrator"
+    }
+  ],
+  "deviceTypeList": [
+    "watch",
+    "watch-square"
+  ],
+  "config": {
+    "designWidth": 432
+  },
+  "router": {
+    "entry": "pages/Home",
+    "pages": {
+      "pages/Home": {
+        "component": "index"
+      },
+      "pages/Calc": {
+        "component": "index"
+      },
+      "pages/Eq": {
+        "component": "index"
+      },
+      "pages/Plot": {
+        "component": "index"
+      },
+      "pages/About": {
+        "component": "index"
+      }
+    }
+  },
+  "display": {
+    "backgroundColor": "#000000"
+  }
+}

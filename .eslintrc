@@ -1,0 +1,48 @@
+{
+  "root": true,
+  "env": {
+    "commonjs": true,
+    "node": true,
+    "es6": true
+  },
+  "plugins": [
+    "json"
+  ],
+  "extends": [
+    "eslint:recommended",
+    "plugin:vue/base"
+  ],
+  "globals": {
+    "requireModule": false,
+    "requireM": false,
+    "console": false,
+    "setTimeout": false,
+    "clearTimeout": false,
+    "setInterval": false,
+    "clearInterval": false
+  },
+  "rules": {
+    "vue/html-end-tags": "warn",
+    "vue/html-quotes": "warn",
+    "vue/comment-directive": "off",
+    "no-unused-vars": [
+      "warn",
+      {
+        "varsIgnorePattern": "prompt",
+        "args": "after-used"
+      }
+    ],
+    "quotes": [
+      "warn",
+      "single",
+      {
+        "avoidEscape": true,
+        "allowTemplateLiterals": true
+      }
+    ],
+    "semi": [
+      1,
+      "never"
+    ]
+  }
+}

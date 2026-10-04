@@ -1,0 +1,893 @@
+<template>
+  <div class="page">
+    <scroll class="scroll" scroll-y id="pager">
+      <div class="toptitle">
+        <text class="t-title" style="font-size: 32px">函数图像</text>
+      </div>
+
+      <div class="topnav">
+        <text class="t-nav" style="font-size: 29px; width: 108px; height: 61px" @click="back">‹ 返回</text>
+        <text class="t-nav" style="font-size: 29px; width: 137px; height: 61px" @click="toggleEdit">{{editing ? '完成' : '自定义'}}</text>
+      </div>
+
+      <!-- 键盘呼出按钮：一次只开一个，点亮的按钮再点一次收起 -->
+      <div class="kbar">
+        <div class="kbtn {{editing ? 'kbtn-on' : ''}}" @click="toggleEdit"><text class="t-kbtn">表达式</text></div>
+        <div class="kbtn {{nEdit ? 'kbtn-on' : ''}}" @click="toggleN"><text class="t-kbtn">点数</text></div>
+        <div class="kbtn {{xEdit ? 'kbtn-on' : ''}}" @click="toggleX"><text class="t-kbtn">取点</text></div>
+      </div>
+      <text class="t-help" style="font-size: 20px; width: 100%; text-align: center">三个键盘一次只开一个，再点一次收起</text>
+
+      <!-- 表达式：编辑时带光标，边改边算 -->
+      <div class="expbar" @click="toggleEdit">
+        <text class="t-dis" style="color: #e8e8e8; font-size: 31px; text-align: left">{{editing ? shown : 'y = ' + pretty}}</text>
+      </div>
+
+      <!-- 按键说明单独放一行：塞进表达式框会把「y = x²」挤成两行 -->
+      <text class="t-help" style="font-size: 22px; width: 100%; text-align: center">{{desc}}</text>
+      <div class="chips">
+        <div class="chip {{paintMode==='safe' ? 'chip-on' : ''}}" @click="setPaintMode('safe')">
+          <text class="t-chip" style="font-size: 27px">保守</text>
+        </div>
+        <div class="chip {{paintMode==='balanced' ? 'chip-on' : ''}}" @click="setPaintMode('balanced')">
+          <text class="t-chip" style="font-size: 27px">均衡</text>
+        </div>
+        <div class="chip {{paintMode==='fast' ? 'chip-on' : ''}}" @click="setPaintMode('fast')">
+          <text class="t-chip" style="font-size: 27px">激进</text>
+        </div>
+        <text class="t-help" style="font-size: 22px; margin-left: 11px">{{paintNote}}</text>
+      </div>
+
+      <text class="t-sub" style="font-size: 23px; width: 100%; text-align: center; margin-bottom: 7px">{{derLine}}</text>
+
+      <!-- 图（编辑时也显示，按一下键就重画，即"实时计算"） -->
+      <div class="plotbox" style="width: {{w}}px; height: {{h}}px">
+        <div class="grid-h" style="top: {{h}}px"></div>
+        <div class="grid-v"></div>
+        <div class="axis" if="{{hasAy}}" style="top: {{ay}}px"></div>
+        <div class="axis" if="{{hasAx}}" style="left: {{ax}}px; width: 2px; height: {{h}}px"></div>
+        <div class="seg-line {{showDeriv ? 'seg-d' : ''}}" for="{{segs}}" tid="i" style="left: {{$item.x}}px; top: {{$item.y}}px; height: {{$item.h}}px; width: {{$item.w}}px"></div>
+        <div class="marker" if="{{hasMarker}}" style="left: {{mx}}px"></div>
+        <div class="mdot" if="{{hasMarker}}" style="left: {{mpx}}px; top: {{mpy}}px"></div>
+      </div>
+
+      <text class="t-sub" style="font-size: 23px; width: 100%; text-align: center; margin-top: 7px; margin-bottom: 11px">{{info}}</text>
+
+      <!-- xy 取点：步进 x，实时读 f(x) 与 f′(x)，并在图上标出来 -->
+      <div class="row" if="{{!editing && !nEdit && !xEdit}}">
+        <div class="row-main" @click="enterX">
+          <text class="row-title" style="font-size: 29px">取点 x = {{xText}}</text>
+          <text class="row-sub" style="font-size: 23px">f(x) = {{yText}}  f′(x) = {{dText}}</text>
+        </div>
+        <div class="seg">
+          <div class="seg-btn" @click="xPrev"><text class="t-seg" style="font-size: 29px">‹</text></div>
+          <div class="seg-btn" @click="xNext"><text class="t-seg" style="font-size: 29px">›</text></div>
+        </div>
+      </div>
+
+      <div class="view" if="{{!editing && !nEdit && !xEdit}}">
+        <div class="row">
+          <div class="row-main">
+            <text class="row-title" style="font-size: 29px">函数</text>
+            <text class="row-sub" style="font-size: 23px">左右切换</text>
+          </div>
+          <div class="seg">
+            <div class="seg-btn" @click="prevFn"><text class="t-seg" style="font-size: 29px">‹</text></div>
+            <text class="seg-val" style="font-size: 23px">{{fnName}}</text>
+            <div class="seg-btn" @click="nextFn"><text class="t-seg" style="font-size: 29px">›</text></div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="row-main">
+            <text class="row-title" style="font-size: 29px">区间</text>
+            <text class="row-sub" style="font-size: 23px">步长自动</text>
+          </div>
+          <div class="seg">
+            <div class="seg-btn" @click="nextRange"><text class="t-seg" style="font-size: 29px">‹</text></div>
+            <text class="seg-val" style="font-size: 23px">{{rangeName}}</text>
+            <div class="seg-btn" @click="nextRange"><text class="t-seg" style="font-size: 29px">›</text></div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="row-main">
+            <text class="row-title" style="font-size: 29px">曲线</text>
+            <text class="row-sub" style="font-size: 23px">{{canDiff ? 'f 或 f′' : '不可导'}}</text>
+          </div>
+          <div class="seg">
+            <div class="seg-btn" @click="toggleDeriv"><text class="t-seg" style="font-size: 29px">‹</text></div>
+            <text class="seg-val" style="font-size: 23px">{{showDeriv ? 'f′(x)' : 'f(x)'}}</text>
+            <div class="seg-btn" @click="toggleDeriv"><text class="t-seg" style="font-size: 29px">›</text></div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="row-main">
+            <text class="row-title" style="font-size: 29px">视图</text>
+            <text class="row-sub" style="font-size: 23px">图 / 表</text>
+          </div>
+          <div class="seg">
+            <div class="seg-btn" @click="toggleTab"><text class="t-seg" style="font-size: 29px">‹</text></div>
+            <text class="seg-val" style="font-size: 23px">{{tab === 'plot' ? '看图' : '值表'}}</text>
+            <div class="seg-btn" @click="toggleTab"><text class="t-seg" style="font-size: 29px">›</text></div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="row-main" @click="enterN">
+            <text class="row-title" style="font-size: 29px">采样点数</text>
+            <text class="row-sub" style="font-size: 23px">{{nHint}}</text>
+          </div>
+          <div class="seg">
+            <div class="seg-btn" @click="prevN"><text class="t-seg" style="font-size: 29px">‹</text></div>
+            <text class="seg-val" style="font-size: 23px">{{nText}}</text>
+            <div class="seg-btn" @click="nextN"><text class="t-seg" style="font-size: 29px">›</text></div>
+          </div>
+        </div>
+      </div>
+
+      <scroll class="tbl" scroll-y if="{{!editing && !nEdit && !xEdit && tab === 'table'}}">
+        <div class="trow thead">
+          <text class="tcell tc-h" style="font-size: 23px">x</text>
+          <text class="tcell tc-h" style="font-size: 23px">f(x)</text>
+          <text class="tcell tc-h" style="font-size: 23px">f′(x)</text>
+        </div>
+        <div class="trow" for="{{rows}}" tid="i">
+          <text class="tcell" style="font-size: 25px">{{$item.a}}</text>
+          <text class="tcell" style="font-size: 25px">{{$item.b}}</text>
+          <text class="tcell" style="font-size: 25px">{{$item.c}}</text>
+        </div>
+      </scroll>
+
+      <!-- 自定义表达式键盘 -->
+            <div class="pad" if="{{editing && !nEdit && !xEdit}}">
+      <div class="prow">
+        <div class="key" @click="tap('7')"><text class="t-key" style="color: #ffffff">7</text></div>
+        <div class="key" @click="tap('8')"><text class="t-key" style="color: #ffffff">8</text></div>
+        <div class="key" @click="tap('9')"><text class="t-key" style="color: #ffffff">9</text></div>
+        <div class="key" @click="tap('←')"><text class="t-icon" style="color: #ff6b6b">←</text></div>
+      </div>
+      <div class="prow">
+        <div class="key" @click="tap('4')"><text class="t-key" style="color: #ffffff">4</text></div>
+        <div class="key" @click="tap('5')"><text class="t-key" style="color: #ffffff">5</text></div>
+        <div class="key" @click="tap('6')"><text class="t-key" style="color: #ffffff">6</text></div>
+        <div class="key" @click="tap('C')"><text class="t-key" style="color: #ff6b6b">C</text></div>
+      </div>
+      <div class="prow">
+        <div class="key" @click="tap('1')"><text class="t-key" style="color: #ffffff">1</text></div>
+        <div class="key" @click="tap('2')"><text class="t-key" style="color: #ffffff">2</text></div>
+        <div class="key" @click="tap('3')"><text class="t-key" style="color: #ffffff">3</text></div>
+        <div class="key" @click="tap('x')"><text class="t-key" style="color: #32a3ff">x</text></div>
+      </div>
+      <div class="prow">
+        <div class="key" @click="tap('0')"><text class="t-key" style="color: #ffffff">0</text></div>
+        <div class="key" @click="tap('.')"><text class="t-key" style="color: #ffffff">.</text></div>
+        <div class="key" @click="tap('−')"><text class="t-key" style="color: #f7b336">−</text></div>
+        <div class="key" @click="tap('+')"><text class="t-key" style="color: #f7b336">+</text></div>
+      </div>
+      <div class="prow">
+        <div class="key" @click="tap('(')"><text class="t-key" style="color: #32a3ff">(</text></div>
+        <div class="key" @click="tap(')')"><text class="t-key" style="color: #32a3ff">)</text></div>
+        <div class="key" @click="tap('×')"><text class="t-key" style="color: #f7b336">×</text></div>
+        <div class="key" @click="tap('÷')"><text class="t-key" style="color: #f7b336">÷</text></div>
+      </div>
+      <div class="prow">
+        <div class="key" @click="tap('◀')"><text class="t-icon" style="color: #ff6b6b">◀</text></div>
+        <div class="key" @click="tap('▶')"><text class="t-icon" style="color: #ff6b6b">▶</text></div>
+        <div class="key" @click="tap('^')"><text class="t-key" style="color: #f7b336">^</text></div>
+        <div class="key" @click="tap('√')"><text class="t-key" style="color: #32a3ff">√</text></div>
+      </div>
+      <div class="prow">
+        <div class="key" @click="tap('sin')"><text class="t-key-sm" style="color: #32a3ff">sin</text></div>
+        <div class="key" @click="tap('cos')"><text class="t-key-sm" style="color: #32a3ff">cos</text></div>
+        <div class="key" @click="tap('tan')"><text class="t-key-sm" style="color: #32a3ff">tan</text></div>
+        <div class="key" @click="tap('ln')"><text class="t-key-md" style="color: #32a3ff">ln</text></div>
+      </div>
+      <div class="prow">
+        <div class="key" @click="tap('log')"><text class="t-key-sm" style="color: #32a3ff">log</text></div>
+        <div class="key" @click="tap('asin')"><text class="t-key-sm" style="color: #32a3ff">asin</text></div>
+        <div class="key" @click="tap('π')"><text class="t-key" style="color: #e34afe">π</text></div>
+        <div class="key" @click="tap('e')"><text class="t-key" style="color: #e34afe">e</text></div>
+      </div>
+      </div>
+      <div class="pill" if="{{editing && !nEdit && !xEdit}}" @click="toggleEdit">
+        <text class="t-pill" style="font-size: 31px">OK</text>
+      </div>
+
+      <!-- 采样点数输入：输入框 + 数字键盘（对标方程页），第 4 行是常用值快捷键 -->
+      <div class="nbox" if="{{nEdit}}">
+        <text class="t-dis" style="color: #e8e8e8; font-size: 31px; text-align: left">{{nBuf}}</text>
+        <text class="t-help" style="font-size: 22px; text-align: left">采样点数 20 ~ 401</text>
+      </div>
+      <div class="pad" if="{{nEdit}}">
+        <div class="prow">
+          <div class="key" @click="nTap('7')"><text class="t-key" style="color: #ffffff">7</text></div>
+          <div class="key" @click="nTap('8')"><text class="t-key" style="color: #ffffff">8</text></div>
+          <div class="key" @click="nTap('9')"><text class="t-key" style="color: #ffffff">9</text></div>
+          <div class="key" @click="nTap('←')"><text class="t-icon" style="color: #ff6b6b">←</text></div>
+        </div>
+        <div class="prow">
+          <div class="key" @click="nTap('4')"><text class="t-key" style="color: #ffffff">4</text></div>
+          <div class="key" @click="nTap('5')"><text class="t-key" style="color: #ffffff">5</text></div>
+          <div class="key" @click="nTap('6')"><text class="t-key" style="color: #ffffff">6</text></div>
+          <div class="key" @click="nTap('C')"><text class="t-key" style="color: #ff6b6b">C</text></div>
+        </div>
+        <div class="prow">
+          <div class="key" @click="nTap('1')"><text class="t-key" style="color: #ffffff">1</text></div>
+          <div class="key" @click="nTap('2')"><text class="t-key" style="color: #ffffff">2</text></div>
+          <div class="key" @click="nTap('3')"><text class="t-key" style="color: #ffffff">3</text></div>
+          <div class="key" @click="nTap('0')"><text class="t-key" style="color: #ffffff">0</text></div>
+        </div>
+        <div class="prow">
+          <div class="key" @click="quickN('80')"><text class="t-key-md" style="color: #32a3ff">80</text></div>
+          <div class="key" @click="quickN('200')"><text class="t-key-md" style="color: #32a3ff">200</text></div>
+          <div class="key" @click="quickN('300')"><text class="t-key-md" style="color: #32a3ff">300</text></div>
+          <div class="key" @click="quickN('401')"><text class="t-key-md" style="color: #32a3ff">401</text></div>
+        </div>
+      </div>
+      <div class="pill" if="{{nEdit}}" @click="applyN">
+        <text class="t-pill" style="font-size: 31px">OK</text>
+      </div>
+
+      <!-- 取点 x 输入：输入框 + 数字键盘（负号 / 小数点，对标方程页） -->
+      <div class="nbox" if="{{xEdit}}">
+        <text class="t-dis" style="color: #e8e8e8; font-size: 31px; text-align: left">x = {{xBuf}}</text>
+        <text class="t-help" style="font-size: 22px; text-align: left">在当前区间内取点，可输负号与小数</text>
+      </div>
+      <div class="pad" if="{{xEdit}}">
+        <div class="prow">
+          <div class="key" @click="xTap('7')"><text class="t-key" style="color: #ffffff">7</text></div>
+          <div class="key" @click="xTap('8')"><text class="t-key" style="color: #ffffff">8</text></div>
+          <div class="key" @click="xTap('9')"><text class="t-key" style="color: #ffffff">9</text></div>
+          <div class="key" @click="xTap('←')"><text class="t-icon" style="color: #ff6b6b">←</text></div>
+        </div>
+        <div class="prow">
+          <div class="key" @click="xTap('4')"><text class="t-key" style="color: #ffffff">4</text></div>
+          <div class="key" @click="xTap('5')"><text class="t-key" style="color: #ffffff">5</text></div>
+          <div class="key" @click="xTap('6')"><text class="t-key" style="color: #ffffff">6</text></div>
+          <div class="key" @click="xTap('C')"><text class="t-key" style="color: #ff6b6b">C</text></div>
+        </div>
+        <div class="prow">
+          <div class="key" @click="xTap('1')"><text class="t-key" style="color: #ffffff">1</text></div>
+          <div class="key" @click="xTap('2')"><text class="t-key" style="color: #ffffff">2</text></div>
+          <div class="key" @click="xTap('3')"><text class="t-key" style="color: #ffffff">3</text></div>
+          <div class="key" @click="xTap('−')"><text class="t-key" style="color: #f7b336">−</text></div>
+        </div>
+        <div class="prow">
+          <div class="key" @click="xTap('0')"><text class="t-key" style="color: #ffffff">0</text></div>
+          <div class="key" @click="xTap('.')"><text class="t-key" style="color: #ffffff">.</text></div>
+          <div class="key" @click="applyX"><text class="t-key-md" style="color: #54cc58">OK</text></div>
+          <div class="key"><text class="t-key-sm" style="color: #ffffff"></text></div>
+        </div>
+      </div>
+      <div class="pill" if="{{xEdit}}" @click="applyX">
+        <text class="t-pill" style="font-size: 31px">OK</text>
+      </div>
+      <div class="gap"></div>
+    </scroll>
+  </div>
+</template>
+
+<script>
+import router from '@blueos.app.appmanager.router'
+import appGlobal from '../../common/core/app.js'
+import { saveKey, loadKey } from '../../common/core/util.js'
+import { presets, plot, plotFn, tableFn } from '../../common/core/plot.js'
+import { formatNumber, parseExpr } from '../../common/core/calc.js'
+import { differentiate, astText, compileAst } from '../../common/core/calculus.js'
+import { descOf } from '../../common/core/keys.js'
+
+const W = 400
+const H = 260
+const RANGES = [
+  { k: 5, name: '−5~5', step: 1 },
+  { k: 10, name: '−10~10', step: 2 },
+  { k: 20, name: '−20~20', step: 4 }
+]
+
+// 键位与计算器一致：数字/运算符/函数/光标
+const KEYS = [
+  ['7', 'num'], ['8', 'num'], ['9', 'num'], ['←', 'del'],
+  ['4', 'num'], ['5', 'num'], ['6', 'num'], ['C', 'del'],
+  ['1', 'num'], ['2', 'num'], ['3', 'num'], ['x', 'var'],
+  ['0', 'num'], ['.', 'num'], ['−', 'op'], ['+', 'op'],
+  ['(', 'var'], [')', 'var'], ['×', 'op'], ['÷', 'op'],
+  ['◀', 'del'], ['▶', 'del'], ['^', 'op'], ['√', 'fx'],
+  ['sin', 'fx'], ['cos', 'fx'], ['tan', 'fx'], ['ln', 'fx'],
+  ['log', 'fx'], ['asin', 'fx'], ['π', 'const'], ['e', 'const']
+]
+
+const COLOR = { num: '#ffffff', op: '#f7b336', del: '#ff6b6b', fx: '#32a3ff', var: '#32a3ff', const: '#e34afe' }
+const APPEND = { '×': '*', '÷': '/', '−': '-', '√': 'sqrt(', 'sin': 'sin(', 'cos': 'cos(', 'tan': 'tan(',
+  'ln': 'ln(', 'log': 'log(', 'asin': 'asin(', '^': '^', 'π': 'π', 'e': 'e' }
+
+const ICONS = { '◀': 1, '▶': 1, '←': 1 }
+
+function buildKeys() {
+  return KEYS.map(k => {
+    const label = k[0]
+    // 与计算器同一套字号档（base.css），以前这里是 15/16/20，跟计算器对不上
+    const cls = ICONS[label] ? 't-icon'
+      : (label.length >= 3 ? 't-key-sm' : (label.length === 2 ? 't-key-md' : 't-key'))
+    return { k: label, label: label, cls: cls, color: COLOR[k[1]] }
+  })
+}
+
+const brief = (v) => (isFinite(v) ? String(Math.round(v * 100) / 100) : '—')
+const cell = (v) => (isFinite(v) ? brief(v) : '—')
+
+export default {
+  data: {
+    paintMode: 'balanced', paintNote: '',
+    nPoint: 200, nText: '200', nBuf: '', nEdit: false, nHint: '20~401 · 点按输入，越少越流畅',
+    xEdit: false, xBuf: '',
+    keys: [],
+    list: [],
+    presetIdx: 1,
+    range: 1,
+    editing: false,
+    tab: 'plot',
+    showDeriv: false,
+    canDiff: false,
+    expr: 'x^2',
+    pretty: 'x²',
+    shown: 'x^2',
+    cur: 3,
+    fnName: 'x²',
+    derLine: '',
+    segs: [],          // 已经画出来的竖段
+    segsAll: [],       // 全部竖段（逐段显示用）
+    paintTimer: 0,
+    infoFinal: '',
+    desc: '',
+    rows: [],
+    w: W,
+    h: H,
+    ax: 0,
+    ay: 0,
+    hasAx: false,
+    hasAy: false,
+    info: '',
+    rangeName: '−10~10',
+    probeX: 0,
+    xText: '0',
+    yText: '—',
+    dText: '—',
+    hasMarker: false,
+    mx: 0,
+    mpx: 0,
+    mpy: 0
+  },
+
+  onInit() {
+    this.keys = buildKeys()
+    this.list = presets()
+    this.presetIdx = 1
+    this.expr = this.list[this.presetIdx].expr
+    this.cur = this.expr.length
+    this.update()
+  },
+
+  onShow() {
+    const self0 = this
+    loadKey('ma_plot_mode', function (ok, v) {
+      if (ok && v) self0.paintMode = String(v)
+      self0.paintNote = '绘制档：' + self0.paintProfile().name + '（每批 ' + self0.paintProfile().step + ' 段）'
+    })
+    loadKey('ma_plot_n', function (ok, v) {
+      const n = ok ? parseInt(v, 10) : NaN
+      const p = isNaN(n) ? 200 : Math.max(20, Math.min(401, n))
+      self0.nPoint = p
+      self0.nText = String(p)
+    })
+  },
+
+  /** 离开页面时停掉未画完的定时器，别让回调打到已销毁的页面上 */
+  onHide() { this.stopPaint() },
+
+
+  refreshPretty() {
+    this.pretty = this.expr
+      .replace(/\^2/g, '²').replace(/\^3/g, '³')
+      .replace(/\*/g, '×').replace(/\//g, '÷')
+      .replace(/sqrt\(/g, '√').replace(/pi/g, 'π')
+    this.shown = (this.expr.slice(0, this.cur) + '|' + this.expr.slice(this.cur)) || '|'
+    const item = this.list[this.presetIdx] || { name: this.expr }
+    this.fnName = item.name.replace(/^y = /, '')
+  },
+
+  derivative() {
+    try {
+      const p = parseExpr(this.expr)
+      if (!p.ok) return { ok: false, err: p.err }
+      const d = differentiate(p.ast)
+      return { ok: true, ast: d, text: astText(d), f: compileAst(d) }
+    } catch (e) {
+      return { ok: false, err: (e && e.message) ? e.message : '不可导' }
+    }
+  },
+
+  /** 重画 + 取点：每次按键都调，所以是"边改边算" */
+  update() {
+    this.refreshPretty()
+    const dr = this.derivative()
+    this.canDiff = dr.ok
+    if (!dr.ok) this.showDeriv = false
+    this.derLine = dr.ok ? ('f′(x) = ' + dr.text) : ('f′(x)：' + dr.err)
+
+    const r = RANGES[this.range]
+    // 采样点数：87 → 401（内核上限）。点密了曲线才准，节点数不会跟着涨——
+    // 下面按像素列聚合，一列只画一条竖段，最粗的曲线也只占"宽度"个节点。
+    const opt = { xmin: -r.k, xmax: r.k, n: this.nPoint, w: W, h: H }
+    const p = (this.showDeriv && dr.ok) ? plotFn(dr.f, opt) : plot(this.expr, opt)
+    if (!p.ok) {
+      this.stopPaint()
+      this.segs = []
+      this.segsAll = []
+      this.hasAx = false
+      this.hasAy = false
+      this.hasMarker = false
+      this.rows = []
+      this.info = p.err
+      this.probe(false)
+      return
+    }
+    // 把采样点按像素列聚成竖段：同一列里最低到最高连成一条，
+    // 曲线陡的地方自然变长，中间没采到样的地方（无定义/出视窗）自然断开
+    this.segsAll = this.buildSegs(p.dots)
+    this.startPaint()
+    this.ax = p.ax === null ? 0 : p.ax
+    this.ay = p.ay === null ? 0 : p.ay
+    this.hasAx = p.ax !== null
+    this.hasAy = p.ay !== null
+    this.rangeName = r.name
+    this.infoFinal = 'x ' + (r.k * -1) + '~' + r.k + '　y ' + brief(p.ymin) + '~' + brief(p.ymax) + '　' + p.sampled + ' 点'
+
+    // 把取点挪进当前区间内
+    if (this.probeX > r.k) this.probeX = r.k
+    if (this.probeX < -r.k) this.probeX = -r.k
+    // 标记点要落在可见范围内
+    const sx = W / (2 * r.k)
+    this.mx = Math.round((this.probeX + r.k) * sx)
+
+    const parsed = parseExpr(this.expr)
+    const f = parsed.ok ? compileAst(parsed.ast) : null
+    this.probe(f, dr.ok ? dr.f : null, p)
+
+    const t = parsed.ok
+      ? tableFn(f, { xmin: -r.k, xmax: r.k, step: r.step, maxRows: 24, f2: dr.ok ? dr.f : null })
+      : { ok: false, rows: [] }
+    this.rows = t.ok ? t.rows.map(row => ({
+      a: brief(row.x), b: cell(row.y), c: row.dok ? cell(row.d) : '—'
+    })) : []
+  },
+
+  /** 采样点 → 按像素列聚合的竖段（一列一条，所以节点数 ≈ 图宽，与采样点数无关） */
+  buildSegs(dots) {
+    if (!dots || !dots.length) return []
+    const col = {}
+    for (let i = 0; i < dots.length; i++) {
+      const d = dots[i]
+      const c = col[d.px]
+      if (!c) col[d.px] = { lo: d.py, hi: d.py }
+      else {
+        if (d.py < c.lo) c.lo = d.py
+        if (d.py > c.hi) c.hi = d.py
+      }
+    }
+    const xs = []
+    for (const k in col) xs.push(Number(k))
+    xs.sort(function (a, b) { return a - b })
+    const out = []
+    // 采样越稀，一条竖段要越宽才能连成线（点数 80 时约 6px，401 时约 2px）
+    const segW = Math.max(2, Math.min(8, Math.ceil(W / this.nPoint) + 1))
+    for (let i = 0; i < xs.length; i++) {
+      const c = col[xs[i]]
+      out.push({ x: xs[i], y: c.lo, h: Math.max(2, c.hi - c.lo + 2), w: segW })
+    }
+    return out
+  },
+
+  /** 从左往右分段画出：先画一截，下一拍再画一截，避免一次改上百个节点 */
+  /** 分档：每批画多少条竖段、隔多久画下一批。保守最不容易卡，激进最快画完 */
+  paintProfile() {
+    const m = this.paintMode
+    if (m === 'safe') return { step: 10, delay: 26, name: '保守' }
+    if (m === 'fast') return { step: 60, delay: 6, name: '激进' }
+    return { step: 24, delay: 16, name: '均衡' }
+  },
+
+  setPaintMode(m) {
+    appGlobal.tap()
+    this.paintMode = m
+    saveKey('ma_plot_mode', m, null)
+    this.paintNote = '绘制档：' + this.paintProfile().name + '（每批 ' + this.paintProfile().step + ' 段）'
+    // 立刻按新档重画一次，看得见差别
+    this.update()
+  },
+
+  startPaint() {
+    this.stopPaint()
+    this.paint(0)
+  },
+
+  stopPaint() {
+    if (this.paintTimer) {
+      clearTimeout(this.paintTimer)
+      this.paintTimer = 0
+    }
+  },
+
+  paint(from) {
+    const all = this.segsAll || []
+    const STEP = this.paintProfile().step
+    const to = Math.min(all.length, from + STEP)
+    this.segs = all.slice(0, to)
+    if (to < all.length) {
+      this.info = '绘制中 ' + Math.round(to / all.length * 100) + '%'
+      const self = this
+      this.paintTimer = setTimeout(function () { self.paint(to) }, this.paintProfile().delay)
+    } else {
+      this.paintTimer = 0
+      this.info = this.infoFinal
+    }
+  },
+
+  /** 取点：算出 x、f(x)、f′(x)，并在图上标出来 */
+  probe(f, df, p) {
+    this.xText = brief(this.probeX)
+    const y = f ? f(this.probeX) : NaN
+    const d = df ? df(this.probeX) : NaN
+    this.yText = isFinite(y) ? brief(y) : '无定义'
+    this.dText = isFinite(d) ? brief(d) : '—'
+    let ok = false
+    if (p && p.ok && isFinite(y) && this.mpx !== undefined) {
+      const r = RANGES[this.range]
+      const sy = H / (p.ymax - p.ymin)
+      const py = Math.round(H - (y - p.ymin) * sy)
+      if (py >= 0 && py <= H) {
+        ok = true
+        this.mpy = py
+        this.mpx = this.mx
+      }
+    }
+    this.hasMarker = ok
+  },
+
+  xPrev() {
+    appGlobal.tap()
+    const r = RANGES[this.range]
+    this.probeX = Math.round((this.probeX - (r.k / 10)) * 1000) / 1000
+    if (this.probeX < -r.k) this.probeX = -r.k
+    this.update()
+  },
+
+  xNext() {
+    appGlobal.tap()
+    const r = RANGES[this.range]
+    this.probeX = Math.round((this.probeX + (r.k / 10)) * 1000) / 1000
+    if (this.probeX > r.k) this.probeX = r.k
+    this.update()
+  },
+
+  prevFn() {
+    appGlobal.tap()
+    this.presetIdx = (this.presetIdx - 1 + this.list.length) % this.list.length
+    this.expr = this.list[this.presetIdx].expr
+    this.cur = this.expr.length
+    this.update()
+  },
+
+  nextFn() {
+    appGlobal.tap()
+    this.presetIdx = (this.presetIdx + 1) % this.list.length
+    this.expr = this.list[this.presetIdx].expr
+    this.cur = this.expr.length
+    this.update()
+  },
+
+  nextRange() {
+    appGlobal.tap()
+    this.range = (this.range + 1) % RANGES.length
+    this.update()
+  },
+
+  setN(v) {
+    const n = Math.max(20, Math.min(401, Math.round(v)))
+    this.nPoint = n
+    this.nText = String(n)
+    saveKey('ma_plot_n', this.nText, null)
+    this.update()
+  },
+
+  prevN() {
+    appGlobal.tap()
+    this.setN(this.nPoint - 20)
+  },
+
+  nextN() {
+    appGlobal.tap()
+    this.setN(this.nPoint + 20)
+  },
+
+  /** 唤出数字键盘（方程页那种输入方式） */
+  enterN() {
+    appGlobal.tap()
+    this.xEdit = false
+    this.editing = false
+    this.nBuf = this.nText
+    this.nEdit = true
+  },
+
+  nTap(k) {
+    appGlobal.tap()
+    if (k === 'C') { this.nBuf = ''; return }
+    if (k === '←') { this.nBuf = this.nBuf.slice(0, -1); return }
+    if (this.nBuf.length < 3) this.nBuf += k
+  },
+
+  /** 应用输入的数值；非法就关掉不改，越界由 setN 夹到 20~401 */
+  applyN() {
+    appGlobal.tap()
+    const v = parseInt(this.nBuf, 10)
+    this.nEdit = false
+    this.resetScroll()
+    if (isNaN(v)) return
+    const self = this
+    // 先让键盘收起、页面重排完，下一拍再重算重画——不然收键盘那一下会卡黑
+    setTimeout(function () { self.setN(v) }, 60)
+  },
+
+  /** 快捷值：直接套用并关闭键盘 */
+  quickN(v) {
+    appGlobal.tap()
+    this.nEdit = false
+    this.resetScroll()
+    const self = this
+    setTimeout(function () { self.setN(parseInt(v, 10)) }, 60)
+  },
+
+  /** 唤出取点 x 的数字键盘（可输负号与小数） */
+  enterX() {
+    appGlobal.tap()
+    this.nEdit = false
+    this.editing = false
+    this.xBuf = String(this.probeX)
+    this.xEdit = true
+  },
+
+  xTap(k) {
+    appGlobal.tap()
+    if (k === 'C') { this.xBuf = ''; return }
+    if (k === '←') { this.xBuf = this.xBuf.slice(0, -1); return }
+    if (k === '−') {
+      this.xBuf = this.xBuf.charAt(0) === '-' ? this.xBuf.slice(1) : '-' + this.xBuf
+      return
+    }
+    if (k === '.') {
+      if (this.xBuf.indexOf('.') < 0) this.xBuf = this.xBuf ? this.xBuf + '.' : '0.'
+      return
+    }
+    if (this.xBuf.length < 8) this.xBuf += k
+  },
+
+  /** 应用输入的 x：夹到当前区间内再取点 */
+  applyX() {
+    appGlobal.tap()
+    const v = parseFloat(this.xBuf)
+    this.xEdit = false
+    this.resetScroll()
+    if (!isFinite(v)) return
+    const r = RANGES[this.range]
+    this.probeX = Math.max(-r.k, Math.min(r.k, v))
+    const self = this
+    setTimeout(function () { self.update() }, 60)
+  },
+
+  /** 收键盘后把滚动位置拉回顶部（运行时没有该能力就静默忽略） */
+  resetScroll() {
+    try {
+      if (typeof this.$element === 'function') {
+        const el = this.$element('pager')
+        if (el && typeof el.scrollTo === 'function') el.scrollTo({ top: 0 })
+      }
+    } catch (e) { /* 忽略 */ }
+  },
+
+  /** 呼出/收起「点数」键盘（与其它键盘互斥，再点一次收起） */
+  toggleN() {
+    appGlobal.tap()
+    if (this.nEdit) { this.nEdit = false; this.resetScroll(); return }
+    this.editing = false
+    this.xEdit = false
+    this.nBuf = this.nText
+    this.nEdit = true
+  },
+
+  /** 呼出/收起「取点」键盘 */
+  toggleX() {
+    appGlobal.tap()
+    if (this.xEdit) { this.xEdit = false; this.resetScroll(); return }
+    this.editing = false
+    this.nEdit = false
+    this.xBuf = String(this.probeX)
+    this.xEdit = true
+  },
+
+  toggleDeriv() {
+    if (!this.canDiff) return
+    appGlobal.tap()
+    this.showDeriv = !this.showDeriv
+    this.update()
+  },
+
+  toggleTab() {
+    appGlobal.tap()
+    this.tab = (this.tab === 'plot') ? 'table' : 'plot'
+  },
+
+  toggleEdit() {
+    appGlobal.tap()
+    if (this.editing) {
+      this.editing = false
+      this.cur = this.expr.length
+      this.resetScroll()
+      const self = this
+      setTimeout(function () { self.update() }, 60)
+      return
+    }
+    this.nEdit = false
+    this.xEdit = false
+    this.editing = true
+    this.cur = this.expr.length
+    this.update()
+  },
+
+  /** 键盘：改完立刻重算（"可以慢一点"——每次按键重画一遍，手环上也够快） */
+  tap(k) {
+    appGlobal.tap()
+    const d = descOf(k)
+    this.desc = d ? (k + '：' + d) : ''
+    if (k === 'C') { this.expr = ''; this.cur = 0; this.update(); return }
+    if (k === '◀') { if (this.cur > 0) this.cur--; this.refreshPretty(); return }
+    if (k === '▶') { if (this.cur < this.expr.length) this.cur++; this.refreshPretty(); return }
+    if (k === '←') {
+      if (this.cur > 0) {
+        this.expr = this.expr.slice(0, this.cur - 1) + this.expr.slice(this.cur)
+        this.cur--
+      }
+      this.update()
+      return
+    }
+    const add = APPEND[k] || k
+    if (this.expr.length < 120) {
+      this.expr = this.expr.slice(0, this.cur) + add + this.expr.slice(this.cur)
+      this.cur += add.length
+    }
+    this.update()
+  },
+
+  /** 收掉任何开着的键盘（三者互斥，不区分优先级） */
+  closeKeys() {
+    const wasEditing = this.editing
+    this.xEdit = false
+    this.nEdit = false
+    this.editing = false
+    this.cur = this.expr.length
+    this.resetScroll()
+    if (wasEditing) {
+      const self = this
+      setTimeout(function () { self.update() }, 60)
+    }
+  },
+
+  back() {
+    appGlobal.tap()
+    if (this.editing || this.nEdit || this.xEdit) { this.closeKeys(); return }
+    router.back()
+  }
+}
+</script>
+
+<style>
+  @import '../../common/style/base.css';
+  .chips { width: 100%; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: center; margin-bottom: 7px; }
+  .chip { height: 58px; border-radius: 29px; background-color: #2a2a2c; align-items: center; justify-content: center; padding-left: 22px; padding-right: 22px; margin: 4px 7px; }
+  .chip-on { background-color: #2f6fed; }
+  .t-chip { font-size: 27px; color: #ffffff; }
+
+  .expbar {
+    width: 100%;
+    min-height: 68px;
+    flex-shrink: 0;
+    background-color: #111111;
+    border-radius: 25px;
+    align-items: center;
+    padding-left: 22px;
+    padding-right: 22px;
+    margin-bottom: 5px;
+  }
+
+  .t-help { color: #8b8f96; width: 100%; }
+  .plotbox {
+    position: relative;
+    flex-shrink: 0;
+    background-color: #0d0f12;
+    border-radius: 18px;
+    margin-top: 4px;
+  }
+
+  .grid-h { position: absolute; left: 0; width: 100%; height: 2px; background-color: #22262c; }
+  .grid-v { position: absolute; top: 0; left: 0; width: 2px; height: 100%; background-color: #22262c; }
+  .axis { position: absolute; left: 0; width: 100%; height: 2px; background-color: #4a5158; }
+  /* 曲线：一列一条竖段拼成连续线（比点阵密、节点还更少） */
+  .seg-line { position: absolute; width: 4px; border-radius: 2px; background-color: #54cc58; }
+  .seg-d { background-color: #32a3ff; }
+
+  /* 取点标记：一条竖线 + 一个亮点 */
+  .marker { position: absolute; top: 0; width: 2px; height: 100%; background-color: rgba(255, 200, 87, 0.55); }
+  .mdot { position: absolute; width: 13px; height: 13px; border-radius: 7px; background-color: #ffc857; }
+
+  /* 本页的行都是「标题 + 步进器」：可用宽度只有 266px，横排会把标题挤成竖排，
+     所以改成上下排——标题一行，步进器一行居中。 */
+  .row {
+    flex-direction: column;
+    align-items: stretch;
+    min-height: 84px;
+    padding: 8px 18px;
+    margin-bottom: 10px;
+  }
+
+  .row .seg {
+    justify-content: center;
+    margin-top: 9px;
+  }
+
+  .tbl { width: 100%; max-height: 342px; flex-direction: column; }
+  .trow { width: 100%; flex-direction: row; align-items: center; }
+  .thead { border-bottom-width: 2px; border-bottom-color: #2a2e34; border-bottom-style: solid; padding-bottom: 4px; margin-bottom: 4px; }
+  .tcell { width: 103px; text-align: center; color: #e8e8e8; }
+  .tc-h { color: #8b8f96; }
+
+  .nbox {
+    width: 100%;
+    min-height: 72px;
+    flex-direction: column;
+    justify-content: center;
+    background-color: #111111;
+    border-radius: 25px;
+    padding-left: 22px;
+    padding-right: 22px;
+    margin-bottom: 11px;
+  }
+
+  .kbar {
+    width: 100%;
+    flex-direction: row;
+    justify-content: center;
+    margin-bottom: 4px;
+  }
+
+  .kbtn {
+    flex: 1;
+    height: 79px;
+    margin: 0 6px;
+    border-radius: 22px;
+    background-color: #1c1c1e;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .kbtn-on {
+    background-color: #2f6fed;
+  }
+
+  .t-kbtn {
+    color: #ffffff;
+    font-size: 27px;
+    text-align: center;
+  }
+
+  .gap { width: 100%; height: 22px; }
+</style>
