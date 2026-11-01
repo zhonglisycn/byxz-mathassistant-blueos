@@ -1,6 +1,6 @@
 {
   "name": "gt2-math",
-  "version": "2.6.1",
+  "version": "2.7.0",
   "packageManager": "pnpm@^9.9.0",
   "description": "理科助手（vivo WATCH GT 2 移植版）：计算器 / 方程 / 函数图像 / 化学 / 物理 / 生物 / 电路图",
   "scripts": {

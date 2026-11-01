@@ -66,7 +66,7 @@
         <div class="row">
           <div class="row-main">
             <text class="row-title" style="font-size: 29px">输入与结果</text>
-            <text class="row-sub" style="font-size: 23px">计算器 2048 字符、自由方程 1024、系数 256；符号 16384 个、嵌套 128 层；阶乘最大 5000；大数精确展开最多 60000 位</text>
+            <text class="row-sub" style="font-size: 23px">计算器 4096 字符、自由方程 2048、系数 512；符号 32768 个、嵌套 256 层；阶乘最大 10000；整数幂最多 1001 位（约 1e1000）；大数精确展开最多 60000 位</text>
           </div>
         </div>
         <div class="row">
@@ -138,7 +138,7 @@
         <div class="row">
           <div class="row-main">
             <text class="row-title" style="font-size: 29px">↑ 箭头与指数塔</text>
-            <text class="row-sub" style="font-size: 23px">键盘只保留一个 ↑ 按钮，按两次得到 ↑↑；^ 与 ↑ 都是幂。指数塔最多 10 层：2^3^2、2^3^2^2 可以，超过 10 层会提示“指数塔最多 10 层”</text>
+            <text class="row-sub" style="font-size: 23px">键盘只保留一个 ↑ 按钮，按两次得到 ↑↑；^ 与 ↑ 都是幂。指数塔最多 12 层：2^3^2、2^3^2^2 可以，超过 12 层会提示“指数塔最多 12 层”</text>
           </div>
         </div>
 

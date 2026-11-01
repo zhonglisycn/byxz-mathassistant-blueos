@@ -12,10 +12,10 @@
 
 export const LIMITS = {
   // 输入长度（字符）
-  calcExpr: 2048,     // 计算器表达式
-  freeEq: 1024,        // 方程页"自由式子"
-  coef: 256,          // 方程页系数（单个输入）
-  plotExpr: 1024,      // 图像页自定义表达式
+  calcExpr: 4096,     // 计算器表达式
+  freeEq: 2048,        // 方程页"自由式子"
+  coef: 512,          // 方程页系数（单个输入）
+  plotExpr: 2048,      // 图像页自定义表达式
 
   // 显示窗口（字符，超出只影响显示）
   calcShow: 240,
@@ -23,14 +23,15 @@ export const LIMITS = {
   plotShow: 240,
 
   // 内核护栏
-  tokens: 16384,       // 分词后的 token 数
-  depth: 128,          // 括号 / 函数 / 幂的嵌套深度
+  tokens: 32768,       // 分词后的 token 数
+  depth: 256,          // 括号 / 函数 / 幂的嵌套深度
   evalDepth: 4096,    // 语法树求值递归深度（防超长链把栈打穿）
-  numMax: 1e308,      // 单个实数结果上限
-  iterMax: 5e6,       // 阶乘 / 箭头这类迭代运算的次数上限
-  tetraB: 10,          // a↑↑b 的 b 上限
-  factMax: 5000,      // 阶乘上限
-  towerDepth: 10       // 指数塔最多几层（^ 右结合链）
+  numMax: 1e1000,     // 数值上限（Number 里是 Infinity；大整数由 bigMaxDigits 控）
+  bigMaxDigits: 1001, // 1e1000：最多 1001 位十进制
+  iterMax: 1e7,       // 阶乘 / 箭头这类迭代运算的次数上限
+  tetraB: 12,          // a↑↑b 的 b 上限
+  factMax: 10000,      // 阶乘上限
+  towerDepth: 12       // 指数塔最多几层（^ 右结合链）
 }
 
 /** 某类输入还能不能追加 addLen 个字符 */

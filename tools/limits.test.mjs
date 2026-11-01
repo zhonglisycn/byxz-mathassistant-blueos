@@ -11,35 +11,36 @@ function test(name, fn) {
 }
 function section(t) { console.log('\n=== ' + t + ' ===') }
 
-section('输入长度上限（本次：512→1024 / 256→512 / 64→128）')
+section('输入长度上限（本次：4096 / 2048 / 512）')
 
 test('上限常量就是需求值', () => {
-  assert.equal(L.LIMITS.calcExpr, 2048)
-  assert.equal(L.LIMITS.freeEq, 1024)
-  assert.equal(L.LIMITS.coef, 256)
-  assert.equal(L.LIMITS.tokens, 16384)
-  assert.equal(L.LIMITS.depth, 128)
-  assert.equal(L.LIMITS.numMax, 1e308)
-  assert.equal(L.LIMITS.tetraB, 10)
-  assert.equal(L.LIMITS.factMax, 5000)
-  assert.equal(L.LIMITS.towerDepth, 10)
+  assert.equal(L.LIMITS.calcExpr, 4096)
+  assert.equal(L.LIMITS.freeEq, 2048)
+  assert.equal(L.LIMITS.coef, 512)
+  assert.equal(L.LIMITS.tokens, 32768)
+  assert.equal(L.LIMITS.depth, 256)
+  assert.equal(L.LIMITS.numMax, Infinity)
+  assert.equal(L.LIMITS.bigMaxDigits, 1001)
+  assert.equal(L.LIMITS.tetraB, 12)
+  assert.equal(L.LIMITS.factMax, 10000)
+  assert.equal(L.LIMITS.towerDepth, 12)
 })
 
-test('计算器表达式边界：2047+1 可以，2048+1 不行', () => {
-  assert.equal(L.fits('calcExpr', 2047, 1), true)
-  assert.equal(L.fits('calcExpr', 2048, 1), false)
-  assert.equal(L.fits('calcExpr', 2046, 2), true)
-  assert.equal(L.fits('calcExpr', 2047, 2), false)
+test('计算器表达式边界：4095+1 可以，4096+1 不行', () => {
+  assert.equal(L.fits('calcExpr', 4095, 1), true)
+  assert.equal(L.fits('calcExpr', 4096, 1), false)
+  assert.equal(L.fits('calcExpr', 4094, 2), true)
+  assert.equal(L.fits('calcExpr', 4095, 2), false)
 })
 
-test('自由方程边界：1023+1 可以，1024+1 不行', () => {
-  assert.equal(L.fits('freeEq', 1023, 1), true)
-  assert.equal(L.fits('freeEq', 1024, 1), false)
+test('自由方程边界：2047+1 可以，2048+1 不行', () => {
+  assert.equal(L.fits('freeEq', 2047, 1), true)
+  assert.equal(L.fits('freeEq', 2048, 1), false)
 })
 
-test('系数边界：255+1 可以，256+1 不行', () => {
-  assert.equal(L.fits('coef', 255, 1), true)
-  assert.equal(L.fits('coef', 256, 1), false)
+test('系数边界：511+1 可以，512+1 不行', () => {
+  assert.equal(L.fits('coef', 511, 1), true)
+  assert.equal(L.fits('coef', 512, 1), false)
 })
 
 test('未知类别不拦（返回 true）', () => {

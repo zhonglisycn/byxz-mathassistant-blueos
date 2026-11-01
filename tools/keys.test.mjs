@@ -71,10 +71,10 @@ test('√ 键（写作 sqrt）能用', () => {
   assert.ok(KEY_DESC['√'], '√ 没有说明')
 })
 
-test('说明里提到的上限与内核一致（阶乘 5000）', () => {
-  assert.ok(KEY_DESC['!'].indexOf('5000') > 0, KEY_DESC['!'])
-  assert.ok(evaluate('5000!').ok)
-  assert.ok(!evaluate('5001!').ok)
+test('说明里提到的上限与内核一致（阶乘 10000）', () => {
+  assert.ok(KEY_DESC['!'].indexOf('10000') > 0, KEY_DESC['!'])
+  assert.ok(evaluate('10000!').ok)
+  assert.ok(!evaluate('10001!').ok)
 })
 
 test('π 与 e 键说明里的数值对得上', () => {

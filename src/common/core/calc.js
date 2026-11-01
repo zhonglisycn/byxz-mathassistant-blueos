@@ -19,8 +19,8 @@
  *   隐式乘法  2π  3(4+5)  (1+2)(3+4)  2sin(30)
  *
  * 上限与护栏（见 common/core/limits.js）：
- *   token 数 ≤ 4096；括号/函数/幂嵌套 ≤ 64 层；求值递归 ≤ 1024 层；
- *   幂/箭头结果 > 1e308 → "数值过大"，迭代次数 > 1e6 → "太大，拒绝计算"。
+ *   token 数 ≤ 32768；括号/函数/幂嵌套 ≤ 256 层；求值递归 ≤ 4096 层；
+ *   整数幂结果最多 1001 位（约 1e1000），迭代次数 > 1e7 → "太大，拒绝计算"。
  *
  * 角度模式：env.deg 为 true 时 sin/cos/tan 的入参按度、asin/acos/atan 的返回值按度。
  */
@@ -327,16 +327,33 @@ function approxOf(s) {
  * 用对象把精确串带出去交给显示层；参与四则运算时明确报错，
  * 而不是悄悄变成 ∞ 或 NaN（那是最难查的错）。
  */
-function bigResult(digitStr) {
-  const s = String(digitStr)
-  const sig = s.length <= 13 ? s : (s.slice(0, 1) + '.' + s.slice(1, 13))
+function bigResult(digitStr, neg) {
+  let s = String(digitStr).replace(/^0+(?=\d)/, '')
+  if (!s) s = '0'
+  const sign = neg && s !== '0' ? '-' : ''
+  let sig = s.length <= 13 ? s : (s.slice(0, 1) + '.' + s.slice(1, 13))
+  if (sig.indexOf('.') >= 0) sig = sig.replace(/0+$/, '').replace(/\.$/, '')
   return {
     __big: true,
     digits: s.length,
-    exact: s,
-    sci: s.length <= 15 ? s : (sig + 'e' + (s.length - 1))
+    exact: sign + s,
+    sci: sign + (s.length <= 15 ? s : (sig + 'e' + (s.length - 1))),
+    neg: !!sign
   }
 }
+/** 非整数幂超过 Number 时的十进制近似载体（只有科学计数法，不参与精确整数运算） */
+function bigApprox(log10) {
+  if (!isFinite(log10) || log10 > 1000) throw new Error('数值过大（上限 1e1000）')
+  if (log10 < 0) return 0
+  const e = Math.floor(log10)
+  let sig = Math.pow(10, log10 - e).toPrecision(13)
+  sig = sig.replace(/0+$/, '').replace(/\.$/, '')
+  return {
+    __big: true, approx: true, digits: e + 1, exact: null,
+    sci: sig + 'e' + e, neg: false
+  }
+}
+
 function isBig(v) { return !!(v && v.__big) }
 function noBig(v, what) {
   if (isBig(v)) throw new Error(what + '碰到超大阶乘，请先单独算出 n!')
@@ -358,13 +375,31 @@ function factorial(n) {
 }
 
 /**
- * 幂结果护栏：实数/虚部任一项超 1e308 或非有限 → "数值过大"。
+ * 幂结果护栏：整数幂走精确大整数（最多 1001 位，约 1e1000）；
+ * 非整数幂超过 Number 时给近似科学计数法（同样受 1e1000 上限约束）。
  * 统一走这里，^、↑、↑↑、↑↑↑ 用的是同一套上限。
  */
 function powValue(a, b) {
+  // 整数底数/指数先走精确大整数通道，这样 10^1000 不会被 Number 的 1e308 卡住。
+  if (!isBig(a) && !isBig(b)) {
+    const ac = toC(a), bc = toC(b)
+    if (Math.abs(ac.im) < 1e-12 && Math.abs(bc.im) < 1e-12 &&
+        Math.floor(ac.re) === ac.re && Math.floor(bc.re) === bc.re && bc.re >= 0) {
+      const big = bigPowChecked(ac.re, bc.re)
+      if (big !== null) return big
+    }
+  }
+  if (isBig(a) || isBig(b)) throw new Error('数值过大（上限 1e1000）')
   const v = cPow(a, b)
   const c = toC(v)
   if (!isFinite(c.re) || !isFinite(c.im) || Math.abs(c.re) > LIMITS.numMax || Math.abs(c.im) > LIMITS.numMax) {
+    if (!isC(a) && !isC(b)) {
+      const ac = toC(a), bc = toC(b)
+      if (ac.re > 0 && isFinite(bc.re)) {
+        const lg = bc.re * Math.log10(ac.re)
+        if (lg > 308) return bigApprox(lg)
+      }
+    }
     throw new Error('数值过大')
   }
   return v
@@ -444,6 +479,176 @@ function bigPowExact(base, exp) {
   const str = limbsToStr(result)
   return str.length <= 15 ? Number(str) : bigResult(str)
 }
+/* ---------- 大整数四则（只处理整数；结果仍走 bigResult） ---------- */
+
+function toBigParts(v) {
+  if (isBig(v)) {
+    if (v.tower) return null
+    const exact = String(v.exact == null ? '' : v.exact)
+    const neg = exact.charAt(0) === '-' || !!v.neg
+    const digits = exact.replace(/^-/, '')
+    return /^\d+$/.test(digits) ? { neg: neg, digits: digits } : null
+  }
+  if (typeof v === 'number' && isFinite(v) && Math.floor(v) === v &&
+      Math.abs(v) <= 9007199254740991) {
+    return { neg: v < 0, digits: String(Math.abs(v)) }
+  }
+  return null
+}
+
+function limbsFromDigits(s) {
+  const a = []
+  for (let i = s.length; i > 0; i -= 7) {
+    a.push(Number(s.slice(Math.max(0, i - 7), i)))
+  }
+  return a.length ? a : [0]
+}
+
+function cmpLimbs(a, b) {
+  if (a.length !== b.length) return a.length > b.length ? 1 : -1
+  for (let i = a.length - 1; i >= 0; i--) {
+    if (a[i] !== b[i]) return a[i] > b[i] ? 1 : -1
+  }
+  return 0
+}
+
+function addLimbs(a, b) {
+  const n = Math.max(a.length, b.length)
+  const out = []
+  let carry = 0
+  for (let i = 0; i < n; i++) {
+    const v = (a[i] || 0) + (b[i] || 0) + carry
+    out.push(v % 10000000)
+    carry = Math.floor(v / 10000000)
+  }
+  if (carry) out.push(carry)
+  return out
+}
+
+function subLimbs(a, b) { // 要求 a >= b
+  const out = []
+  let borrow = 0
+  for (let i = 0; i < a.length; i++) {
+    let v = a[i] - (b[i] || 0) - borrow
+    borrow = 0
+    if (v < 0) { v += 10000000; borrow = 1 }
+    out.push(v)
+  }
+  while (out.length > 1 && out[out.length - 1] === 0) out.pop()
+  return out
+}
+
+function bigFromLimbs(limbs, neg) {
+  const s = limbsToStr(limbs)
+  if (s.length > LIMITS.bigMaxDigits) throw new Error('数值过大（上限 1e1000）')
+  if (s.length <= 15) return Number((neg ? '-' : '') + s)
+  return bigResult(s, neg)
+}
+
+function bigAdd(a, b) {
+  const A = toBigParts(a), B = toBigParts(b)
+  if (!A || !B) throw new Error('超大整数只能和整数做四则运算')
+  const x = limbsFromDigits(A.digits), y = limbsFromDigits(B.digits)
+  if (A.neg === B.neg) return bigFromLimbs(addLimbs(x, y), A.neg)
+  const c = cmpLimbs(x, y)
+  if (c === 0) return 0
+  return c > 0 ? bigFromLimbs(subLimbs(x, y), A.neg)
+               : bigFromLimbs(subLimbs(y, x), B.neg)
+}
+
+function bigSub(a, b) {
+  const B = toBigParts(b)
+  if (!B) throw new Error('超大整数只能和整数做四则运算')
+  return bigAdd(a, bigFromLimbs(limbsFromDigits(B.digits), !B.neg))
+}
+
+function bigMul(a, b) {
+  const A = toBigParts(a), B = toBigParts(b)
+  if (!A || !B) throw new Error('超大整数只能和整数做四则运算')
+  const out = mulLimbs(limbsFromDigits(A.digits), limbsFromDigits(B.digits))
+  return bigFromLimbs(out, A.neg !== B.neg)
+}
+
+function cmpDec(a, b) {
+  a = a.replace(/^0+(?=\d)/, '')
+  b = b.replace(/^0+(?=\d)/, '')
+  if (a.length !== b.length) return a.length > b.length ? 1 : -1
+  return a === b ? 0 : (a > b ? 1 : -1)
+}
+
+function subDec(a, b) { // a >= b
+  const out = []
+  let borrow = 0
+  let i = a.length - 1, j = b.length - 1
+  while (i >= 0) {
+    let v = (a.charCodeAt(i) - 48) - (j >= 0 ? b.charCodeAt(j) - 48 : 0) - borrow
+    if (v < 0) { v += 10; borrow = 1 } else borrow = 0
+    out.push(v)
+    i--; j--
+  }
+  while (out.length > 1 && out[out.length - 1] === 0) out.pop()
+  return out.reverse().join('')
+}
+
+function divModDec(a, b) {
+  a = a.replace(/^0+(?=\d)/, '')
+  if (b === '0') throw new Error('除以零')
+  let rem = '0', q = ''
+  for (let i = 0; i < a.length; i++) {
+    rem = (rem + a.charAt(i)).replace(/^0+(?=\d)/, '')
+    let d = 0
+    while (cmpDec(rem, b) >= 0) { rem = subDec(rem, b); d++ }
+    q += String(d)
+  }
+  return { q: q.replace(/^0+(?=\d)/, ''), rem: rem.replace(/^0+(?=\d)/, '') }
+}
+
+function bigDiv(a, b) {
+  const A = toBigParts(a), B = toBigParts(b)
+  if (!A || !B) throw new Error('超大整数只能和整数做四则运算')
+  if (A.digits.length > 5000 || B.digits.length > 5000) throw new Error('超大整数除法位数过多')
+  const r = divModDec(A.digits, B.digits)
+  if (r.rem !== '0') throw new Error('超大整数除法结果不是整数')
+  return bigFromLimbs(limbsFromDigits(r.q), A.neg !== B.neg)
+}
+
+function bigMod(a, b) {
+  const A = toBigParts(a), B = toBigParts(b)
+  if (!A || !B) throw new Error('超大整数只能和整数做四则运算')
+  if (A.digits.length > 5000 || B.digits.length > 5000) throw new Error('超大整数取余位数过多')
+  const r = divModDec(A.digits, B.digits)
+  return bigFromLimbs(limbsFromDigits(r.rem), A.neg)
+}
+
+function bigNeg(a) {
+  const A = toBigParts(a)
+  if (!A) throw new Error('超大整数只能和整数做四则运算')
+  return bigFromLimbs(limbsFromDigits(A.digits), !A.neg)
+}
+
+/** 整数幂：结果超过 1e1000 直接拒绝；最多 1001 位十进制 */
+function bigPowChecked(base, exp) {
+  if (!isFinite(base) || !isFinite(exp) || Math.floor(base) !== base ||
+      Math.floor(exp) !== exp || exp < 0) return null
+  if (Math.abs(base) > 9007199254740991) return null
+  if (base === 0) return exp === 0 ? 1 : 0
+  if (base === 1) return 1
+  if (base === -1) return exp % 2 ? -1 : 1
+  const neg = base < 0 && exp % 2 === 1
+  const abs = Math.abs(base)
+  const digits = Math.floor(exp * Math.log10(abs)) + 1
+  if (!isFinite(digits) || digits > LIMITS.bigMaxDigits) {
+    throw new Error('数值过大（上限 1e1000）')
+  }
+  const v = bigPowExact(abs, exp)
+  if (v === null) throw new Error('数值过大（上限 1e1000）')
+  if (isBig(v)) {
+    if (v.digits > LIMITS.bigMaxDigits) throw new Error('数值过大（上限 1e1000）')
+    return neg ? bigNeg(v) : v
+  }
+  return neg ? -v : v
+}
+
 function towerResult(label) {
   return { __big: true, tower: true, expr: label, exact: label, sci: '', digits: 0 }
 }
@@ -545,8 +750,26 @@ function callFn(name, args, env) {
   throw new Error('不认识的函数：' + name)
 }
 
+/** 先迭代检查深度，避免 5000 层 AST 在递归前就把 JS 栈打穿 */
+function assertEvalDepth(root) {
+  const stack = [[root, 0]]
+  while (stack.length) {
+    const item = stack.pop()
+    const n = item[0], d = item[1]
+    if (!n || typeof n !== 'object') continue
+    if (d > LIMITS.evalDepth) {
+      throw new Error('算式嵌套太深（最多 ' + LIMITS.evalDepth + ' 层）')
+    }
+    const nd = d + 1
+    if (n.a) stack.push([n.a, nd])
+    if (n.b) stack.push([n.b, nd])
+    if (n.args) for (let i = 0; i < n.args.length; i++) stack.push([n.args[i], nd])
+  }
+}
+
 /** 对语法树求值。env 可含 { x, deg } */
 export function evalAst(node, env) {
+  assertEvalDepth(node)
   return evalNode(node, env || {}, 0)
 }
 
@@ -560,21 +783,34 @@ function evalNode(node, e, d) {
     case 'var':
       if (typeof e.x !== 'number') throw new Error('算式里有未知的 x')
       return e.x
-    case 'neg': return cNeg(noBig(evalNode(node.a, e, dd), '取负'))
-    case '+': return cAdd(noBig(evalNode(node.a, e, dd), '加法'), noBig(evalNode(node.b, e, dd), '加法'))
-    case '-': return cSub(noBig(evalNode(node.a, e, dd), '减法'), noBig(evalNode(node.b, e, dd), '减法'))
-    case '*': return cMul(noBig(evalNode(node.a, e, dd), '乘法'), noBig(evalNode(node.b, e, dd), '乘法'))
+    case 'neg': {
+      const a = evalNode(node.a, e, dd)
+      return isBig(a) ? bigNeg(a) : cNeg(noBig(a, '取负'))
+    }
+    case '+': {
+      const a = evalNode(node.a, e, dd), b = evalNode(node.b, e, dd)
+      return (isBig(a) || isBig(b)) ? bigAdd(a, b) : cAdd(a, b)
+    }
+    case '-': {
+      const a = evalNode(node.a, e, dd), b = evalNode(node.b, e, dd)
+      return (isBig(a) || isBig(b)) ? bigSub(a, b) : cSub(a, b)
+    }
+    case '*': {
+      const a = evalNode(node.a, e, dd), b = evalNode(node.b, e, dd)
+      return (isBig(a) || isBig(b)) ? bigMul(a, b) : cMul(a, b)
+    }
     case '/': {
-      const d0 = noBig(evalNode(node.b, e, dd), '除法')
-      if (cAbs(d0) === 0) throw new Error('除以零')
-      return cDiv(noBig(evalNode(node.a, e, dd), '除法'), d0)
+      const a = evalNode(node.a, e, dd), b = evalNode(node.b, e, dd)
+      if (isBig(a) || isBig(b)) return bigDiv(a, b)
+      if (cAbs(b) === 0) throw new Error('除以零')
+      return cDiv(a, b)
     }
     case '%': {
-      const a = noBig(evalNode(node.a, e, dd), '取余')
-      const d0 = noBig(evalNode(node.b, e, dd), '取余')
-      if (isC(d0) || isC(a)) throw new Error('取余不支持复数')
-      if (d0 === 0) throw new Error('除以零')
-      return a % d0
+      const a = evalNode(node.a, e, dd), b = evalNode(node.b, e, dd)
+      if (isBig(a) || isBig(b)) return bigMod(a, b)
+      if (isC(b) || isC(a)) throw new Error('取余不支持复数')
+      if (b === 0) throw new Error('除以零')
+      return a % b
     }
     case '^': {
       const a = noBig(evalNode(node.a, e, dd), '乘方')
@@ -628,7 +864,7 @@ export function evaluate(src, opts) {
         ok: true, huge: true,
         value: undefined, re: NaN, im: 0, complex: false,
         digits: v.digits, exact: v.exact, sci: v.sci,
-        tower: !!v.tower, expr: v.expr || '',
+        tower: !!v.tower, approx: !!v.approx, expr: v.expr || '',
         ast: ast
       }
     }
@@ -903,6 +1139,7 @@ export function displayResult(res, exactMode, full) {
   // 超大阶乘：位数不多（≤40 位）时给完整整数，否则给科学计数法，精确模式补上位数
   if (res.huge) {
     if (res.tower) return exactMode ? res.expr : (res.expr + '（无法完整展开）')
+    if (res.approx) return exactMode ? (res.sci + '（约 ' + res.digits + ' 位）') : res.sci
     if (exactMode) return full ? String(res.exact) : (res.digits <= 40 ? res.exact : (res.sci + '（' + res.digits + ' 位）'))
     return res.sci
   }

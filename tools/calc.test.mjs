@@ -119,7 +119,7 @@ test('可读的错误信息', () => {
   assert.equal(bad('1+'), '算式不完整')
   assert.equal(bad('asin(2)'), 'asin 参数需在 -1~1 之间')
   assert.equal(bad('3.5!'), '阶乘只支持非负整数')
-  assert.equal(bad('5001!'), '阶乘最大支持 5000')
+  assert.equal(bad('10001!'), '阶乘最大支持 10000')
   assert.equal(bad('1&&2'), '无法识别的字符：&')
   assert.equal(bad('foo(1)'), '不认识的符号：foo')
   assert.equal(bad('x+1'), '算式里有未知的 x')
@@ -273,15 +273,15 @@ test('171! 起改用精确大数 + 科学计数法显示', () => {
   assert.ok(C.displayResult(r, true).indexOf('375 位') > 0, C.displayResult(r, true))
 })
 
-test('5000! 能算（上限）', () => {
-  const r = C.evaluate('5000!')
+test('10000! 能算（上限）', () => {
+  const r = C.evaluate('10000!')
   assert.ok(r.ok && r.huge)
-  assert.equal(r.digits, 16326)
+  assert.equal(r.digits, 35660)
 })
 
-test('超过 5000 报错', () => {
-  const r = C.evaluate('5001!')
-  assert.ok(!r.ok && r.err.indexOf('5000') > 0, r.err)
+test('超过 10000 报错', () => {
+  const r = C.evaluate('10001!')
+  assert.ok(!r.ok && r.err.indexOf('10000') > 0, r.err)
 })
 
 test('小阶乘精确：15! 在 Number 里就能存下', () => {
@@ -296,10 +296,10 @@ test('19! 以上 Number 存不下，精确模式给真正确整数串', () => {
   assert.equal(C.displayResult(r, false), '1.5511e+25')
 })
 
-test('超大阶乘参与四则运算时给明确提示，而不是变成 ∞', () => {
+test('超大阶乘也能参与四则运算（精确大整数）', () => {
   const r = C.evaluate('200!+1')
-  assert.ok(!r.ok, '应该报错')
-  assert.ok(r.err.indexOf('超大阶乘') > 0, r.err)
+  assert.ok(r.ok && r.huge, r.err || '应该得到大整数')
+  assert.ok(String(r.exact).slice(-1) === '1', '末位应为 1')
 })
 
 test('位数不多的大数给出完整整数（精确模式）', () => {
@@ -394,30 +394,32 @@ test('^ 与 ↑ 都是右结合（指数塔、箭头塔）', () => {
   eq('2^2^3', 256)
 })
 
-test('↑ 沿用幂的数值上限', () => {
-  assert.equal(bad('10↑400'), '数值过大')
-  assert.equal(bad('10^400'), '数值过大')
+test('↑ 与幂共用 1e1000 上限', () => {
+  assert.equal(C.evaluate('10↑400').ok, true)
+  assert.equal(C.evaluate('10^400').ok, true)
+  assert.equal(bad('10↑1001'), '数值过大（上限 1e1000）')
+  assert.equal(bad('10^1001'), '数值过大（上限 1e1000）')
 })
 
 section('计算上限与防爆护栏')
 
-test('token 上限 16384：超长串返回错误而不是卡死', () => {
-  const r = C.evaluate('1+'.repeat(8500) + '1')
+test('token 上限 32768：超长串返回错误而不是卡死', () => {
+  const r = C.evaluate('1+'.repeat(17000) + '1')
   assert.equal(r.ok, false)
   assert.ok(r.err.indexOf('算式太长') >= 0, r.err)
 })
 
-test('括号嵌套 128 层上限：超限报错，不栈溢出', () => {
-  const r = C.evaluate('('.repeat(140) + '1' + ')'.repeat(140))
+test('括号嵌套 256 层上限：超限报错，不栈溢出', () => {
+  const r = C.evaluate('('.repeat(270) + '1' + ')'.repeat(270))
   assert.equal(r.ok, false)
   assert.ok(r.err.indexOf('嵌套层数太多') >= 0, r.err)
 })
 
-test('指数塔最多 10 层', () => {
-  assert.equal(C.evaluate('1^1^1^1^1^1^1^1^1^1^1').ok, true)
-  const r = C.evaluate('1^1^1^1^1^1^1^1^1^1^1^1')
+test('指数塔最多 12 层', () => {
+  assert.equal(C.evaluate('1^1^1^1^1^1^1^1^1^1^1^1^1').ok, true)
+  const r = C.evaluate('1^1^1^1^1^1^1^1^1^1^1^1^1^1')
   assert.equal(r.ok, false)
-  assert.ok(r.err.indexOf('指数塔最多 10 层') >= 0, r.err)
+  assert.ok(r.err.indexOf('指数塔最多 12 层') >= 0, r.err)
 })
 
 test('512 字符内的平坦长链仍能算（不误伤正常输入）', () => {
@@ -432,14 +434,36 @@ test('求值递归深度护栏：直接塞深层语法树也不崩', () => {
   assert.throws(() => C.evalAst(ast, {}), /嵌套太深/)
 })
 
-test('大数统一报"数值过大"', () => {
-  assert.equal(bad('10^400'), '数值过大')
-  assert.equal(bad('2^2000'), '数值过大')
-  assert.equal(bad('1e300^2'), '数值过大')
+test('大数上限提高到 1e1000', () => {
+  const r = C.evaluate('10^1000')
+  assert.ok(r.ok && r.huge, r.err || '应该得到大整数')
+  assert.equal(r.digits, 1001)
+  assert.ok(r.sci.indexOf('e1000') > 0, r.sci)
+  const add = C.evaluate('10^1000+1')
+  assert.ok(add.ok && add.huge)
+  assert.equal(add.exact.slice(-1), '1')
+  const mul = C.evaluate('10^1000*2')
+  assert.ok(mul.ok && mul.huge)
+  assert.equal(C.evaluate('10^1000/10^999').value, 10)
+  const two = C.evaluate('2^3322')
+  assert.ok(two.ok && two.huge)
+  assert.equal(two.digits, 1001)
+  assert.equal(bad('10^1001'), '数值过大（上限 1e1000）')
+  assert.equal(bad('2^4000'), '数值过大（上限 1e1000）')
+})
+
+test('非整数幂超过 Number 时给近似大数', () => {
+  const a = C.evaluate('1e300^2')
+  assert.ok(a.ok && a.huge && a.approx, a.err || '应该走近似大数')
+  assert.ok(a.sci.indexOf('e600') > 0, a.sci)
+  const b = C.evaluate('1.1^10000')
+  assert.ok(b.ok && b.huge && b.approx)
+  assert.equal(C.displayResult(b, false), b.sci)
+  assert.equal(bad('1.1^100000'), '数值过大（上限 1e1000）')
 })
 
 test('超过阶乘上限 → 明确报错', () => {
-  assert.equal(bad('2000000!'), '阶乘最大支持 5000')
+  assert.equal(bad('2000000!'), '阶乘最大支持 10000')
 })
 
 const failed = results.filter(r => !r.ok)

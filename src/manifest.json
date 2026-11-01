@@ -1,8 +1,8 @@
 {
   "package": "com.byxz.mathassistant",
   "name": "理科助手",
-  "versionName": "2.6.1",
-  "versionCode": 261,
+  "versionName": "2.7.0",
+  "versionCode": 270,
   "appCategory": [
     "utilities"
   ],
