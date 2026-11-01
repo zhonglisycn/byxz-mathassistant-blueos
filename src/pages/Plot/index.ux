@@ -15,6 +15,7 @@
         <div class="kbtn {{editing ? 'kbtn-on' : ''}}" @click="toggleEdit"><text class="t-kbtn">表达式</text></div>
         <div class="kbtn {{nEdit ? 'kbtn-on' : ''}}" @click="toggleN"><text class="t-kbtn">点数</text></div>
         <div class="kbtn {{xEdit ? 'kbtn-on' : ''}}" @click="toggleX"><text class="t-kbtn">取点</text></div>
+        <div class="kbtn {{dirty ? 'kbtn-draw' : ''}}" @click="drawNow"><text class="t-kbtn">绘制</text></div>
       </div>
       <text class="t-help" style="font-size: 20px; width: 100%; text-align: center">三个键盘一次只开一个，再点一次收起</text>
 
@@ -190,6 +191,16 @@
         <div class="key" @click="tap('π')"><text class="t-key" style="color: #e34afe">π</text></div>
         <div class="key" @click="tap('e')"><text class="t-key" style="color: #e34afe">e</text></div>
       </div>
+      <div class="prow">
+        <div class="key" @click="tap('ⁿ√')"><text class="t-key-md" style="color: #32a3ff">ⁿ√</text></div>
+        <div class="key" @click="tap(',')"><text class="t-key" style="color: #32a3ff">,</text></div>
+        <div class="key" @click="tap('↑')"><text class="t-key" style="color: #f7b336">↑</text></div>
+      </div>
+      <div class="prow">
+        <div class="key" @click="tap('|')"><text class="t-key" style="color: #32a3ff">|</text></div>
+        <div class="key" @click="tap('x²')"><text class="t-key-md" style="color: #32a3ff">x²</text></div>
+        <div class="key" @click="tap('x³')"><text class="t-key-md" style="color: #32a3ff">x³</text></div>
+      </div>
       </div>
       <div class="pill" if="{{editing && !nEdit && !xEdit}}" @click="toggleEdit">
         <text class="t-pill" style="font-size: 31px">OK</text>
@@ -277,6 +288,7 @@ import { presets, plot, plotFn, tableFn } from '../../common/core/plot.js'
 import { formatNumber, parseExpr } from '../../common/core/calc.js'
 import { differentiate, astText, compileAst } from '../../common/core/calculus.js'
 import { descOf } from '../../common/core/keys.js'
+import { LIMITS, fits, clipCursor, clipText } from '../../common/core/limits.js'
 
 const W = 400
 const H = 260
@@ -295,11 +307,15 @@ const KEYS = [
   ['(', 'var'], [')', 'var'], ['×', 'op'], ['÷', 'op'],
   ['◀', 'del'], ['▶', 'del'], ['^', 'op'], ['√', 'fx'],
   ['sin', 'fx'], ['cos', 'fx'], ['tan', 'fx'], ['ln', 'fx'],
-  ['log', 'fx'], ['asin', 'fx'], ['π', 'const'], ['e', 'const']
+  ['log', 'fx'], ['asin', 'fx'], ['π', 'const'], ['e', 'const'],
+  ['ⁿ√', 'fx'], [',', 'var'], ['↑', 'op'], ['↑↑', 'op'],
+  ['↑↑↑', 'op'], ['|', 'var'], ['x²', 'fx'], ['x³', 'fx']
 ]
 
 const COLOR = { num: '#ffffff', op: '#f7b336', del: '#ff6b6b', fx: '#32a3ff', var: '#32a3ff', const: '#e34afe' }
-const APPEND = { '×': '*', '÷': '/', '−': '-', '√': 'sqrt(', 'sin': 'sin(', 'cos': 'cos(', 'tan': 'tan(',
+const APPEND = { '×': '*', '÷': '/', '−': '-', '√': 'sqrt(', 'ⁿ√': 'root(', ',': ',', '|': '|',
+  '↑': '↑', '↑↑': '↑↑', '↑↑↑': '↑↑↑', 'x²': '^2', 'x³': '^3',
+  'sin': 'sin(', 'cos': 'cos(', 'tan': 'tan(',
   'ln': 'ln(', 'log': 'log(', 'asin': 'asin(', '^': '^', 'π': 'π', 'e': 'e' }
 
 const ICONS = { '◀': 1, '▶': 1, '←': 1 }
@@ -341,6 +357,7 @@ export default {
     segsAll: [],       // 全部竖段（逐段显示用）
     paintTimer: 0,
     infoFinal: '',
+    dirty: false,
     desc: '',
     rows: [],
     w: W,
@@ -362,15 +379,20 @@ export default {
   },
 
   onInit() {
+    appGlobal.bind(this.$app)
     this.keys = buildKeys()
     this.list = presets()
     this.presetIdx = 1
     this.expr = this.list[this.presetIdx].expr
     this.cur = this.expr.length
-    this.update()
+    this.refreshPretty()
+    this.dirty = true
+    this.info = '按「绘制」生成图像'
   },
 
   onShow() {
+    // 每次进页都重新接宿主：设置页改的开关立刻生效
+    appGlobal.bind(this.$app)
     const self0 = this
     loadKey('ma_plot_mode', function (ok, v) {
       if (ok && v) self0.paintMode = String(v)
@@ -384,7 +406,8 @@ export default {
     })
     if (this.pendingUpdate) {
       this.pendingUpdate = false
-      this.update()
+      this.dirty = true
+      this.info = '参数已修改，按「绘制」重画'
     }
   },
 
@@ -393,11 +416,13 @@ export default {
 
 
   refreshPretty() {
-    this.pretty = this.expr
+    const pretty = this.expr
       .replace(/\^2/g, '²').replace(/\^3/g, '³')
       .replace(/\*/g, '×').replace(/\//g, '÷')
-      .replace(/sqrt\(/g, '√').replace(/pi/g, 'π')
-    this.shown = (this.expr.slice(0, this.cur) + '|' + this.expr.slice(this.cur)) || '|'
+      .replace(/sqrt\(/g, '√').replace(/root\(/g, 'ⁿ√(').replace(/pi/g, 'π')
+    // 显示层截断；内部 expr 仍是完整的，绘图照常按全部字符算
+    this.pretty = clipText(pretty, LIMITS.plotShow)
+    this.shown = clipCursor(this.expr, this.cur, LIMITS.plotShow) || '|'
     const item = this.list[this.presetIdx] || { name: this.expr }
     this.fnName = item.name.replace(/^y = /, '')
   },
@@ -423,6 +448,7 @@ export default {
   },
 
   doUpdate() {
+    this.dirty = false
     this.refreshPretty()
     const dr = this.derivative()
     this.canDiff = dr.ok
@@ -526,8 +552,6 @@ export default {
     this.paintMode = m
     saveKey('ma_plot_mode', m, null)
     this.paintNote = '绘制档：' + this.paintProfile().name + '（每批 ' + this.paintProfile().step + ' 段）'
-    // 立刻按新档重画一次，看得见差别
-    this.update()
   },
 
   startPaint() {
@@ -583,7 +607,7 @@ export default {
     const r = RANGES[this.range]
     this.probeX = Math.round((this.probeX - (r.k / 10)) * 1000) / 1000
     if (this.probeX < -r.k) this.probeX = -r.k
-    this.update()
+    this.markDirty()
   },
 
   xNext() {
@@ -591,7 +615,7 @@ export default {
     const r = RANGES[this.range]
     this.probeX = Math.round((this.probeX + (r.k / 10)) * 1000) / 1000
     if (this.probeX > r.k) this.probeX = r.k
-    this.update()
+    this.markDirty()
   },
 
   prevFn() {
@@ -599,7 +623,8 @@ export default {
     this.presetIdx = (this.presetIdx - 1 + this.list.length) % this.list.length
     this.expr = this.list[this.presetIdx].expr
     this.cur = this.expr.length
-    this.update()
+    this.refreshPretty()
+    this.markDirty()
   },
 
   nextFn() {
@@ -607,13 +632,15 @@ export default {
     this.presetIdx = (this.presetIdx + 1) % this.list.length
     this.expr = this.list[this.presetIdx].expr
     this.cur = this.expr.length
-    this.update()
+    this.refreshPretty()
+    this.markDirty()
   },
 
   nextRange() {
     appGlobal.tap()
     this.range = (this.range + 1) % RANGES.length
-    this.update()
+    this.rangeName = RANGES[this.range].name
+    this.markDirty()
   },
 
   setN(v) {
@@ -621,8 +648,7 @@ export default {
     this.nPoint = n
     this.nText = String(n)
     saveKey('ma_plot_n', this.nText, null)
-    const self = this
-    this.defer(function () { self.update() })
+    this.markDirty()
   },
 
   /** 下一拍再干重活：先让"收键盘/改状态"这一帧渲染完，避免长帧（真机上长帧会卡甚至重启） */
@@ -660,12 +686,13 @@ export default {
   /** 输入表达式：先只更新表达式行，重算重画 debounce 180ms 合并（连打不卡） */
   scheduleUpdate() {
     this.refreshPretty()
-    if (this.debTimer) clearTimeout(this.debTimer)
-    const self = this
-    this.debTimer = setTimeout(function () {
-      self.debTimer = 0
-      self.update()
-    }, 180)
+    this.markDirty()
+  },
+
+  /** 参数改了只标脏，不自动重画；由「绘制」按钮触发 */
+  markDirty() {
+    this.dirty = true
+    this.info = '参数已修改，按「绘制」重画'
   },
 
   prevN() {
@@ -745,8 +772,7 @@ export default {
     if (!isFinite(v)) return
     const r = RANGES[this.range]
     this.probeX = Math.max(-r.k, Math.min(r.k, v))
-    const self = this
-    this.defer(function () { self.update() })
+    this.markDirty()
   },
 
   /** 收键盘后把滚动位置拉回顶部（运行时没有该能力就静默忽略） */
@@ -783,7 +809,7 @@ export default {
     if (!this.canDiff) return
     appGlobal.tap()
     this.showDeriv = !this.showDeriv
-    this.update()
+    this.markDirty()
   },
 
   toggleTab() {
@@ -792,21 +818,25 @@ export default {
     if (this.tab === 'table') this.refreshTable()
   },
 
+  /** 手动重绘：改完表达式/区间/点数后不用等自动刷新也能再画一遍 */
+  drawNow() {
+    appGlobal.tap()
+    this.update()
+  },
+
   toggleEdit() {
     appGlobal.tap()
     if (this.editing) {
       this.editing = false
       this.cur = this.expr.length
       this.resetScroll()
-      const self = this
-      this.defer(function () { self.update() })
+      this.markDirty()
       return
     }
     this.nEdit = false
     this.xEdit = false
     this.editing = true
     this.cur = this.expr.length
-    this.update()
   },
 
   /** 键盘：改完立刻重算（"可以慢一点"——每次按键重画一遍，手环上也够快） */
@@ -826,7 +856,7 @@ export default {
       return
     }
     const add = APPEND[k] || k
-    if (this.expr.length < 120) {
+    if (fits('plotExpr', this.expr.length, add.length)) {
       this.expr = this.expr.slice(0, this.cur) + add + this.expr.slice(this.cur)
       this.cur += add.length
     }
@@ -841,10 +871,7 @@ export default {
     this.editing = false
     this.cur = this.expr.length
     this.resetScroll()
-    if (wasEditing) {
-      const self = this
-      this.defer(function () { self.update() })
-    }
+    if (wasEditing) this.markDirty()
   },
 
   back() {

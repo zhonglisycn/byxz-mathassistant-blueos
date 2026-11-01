@@ -2,98 +2,184 @@
   <div class="page">
     <scroll class="scroll" scroll-y>
 
-    <div class="toptitle">
-      <text class="t-title" style="font-size: 31px">设置</text>
+      <div class="toptitle">
+        <text class="t-title" style="font-size: 31px">设置</text>
+      </div>
 
+      <div class="topnav">
+        <text class="t-nav" style="font-size: 29px; height: 61px" @click="back">‹ 返回</text>
+      </div>
 
-    </div>
-
-
-    <div class="topnav">
-      <text class="t-nav" style="font-size: 29px; height: 61px" @click="back">‹ 返回</text>
-
-
-    </div>
-
-      <text class="sec" style="font-size: 23px">计算设置</text>
-
-      <!-- 功能项 + ‹ 值 ›（设计稿里的开关行） -->
-      <div class="row">
-        <div class="row-main">
-          <text class="row-title" style="font-size: 31px">角度模式</text>
-          <text class="row-sub" style="font-size: 23px">{{deg ? 'sin 90 = 1' : 'sin π/2 = 1'}}</text>
+      <div class="stab">
+        <div class="stab-b {{tab=='calc' ? 'stab-on' : 'stab-off'}}" @click="setTab('calc')">
+          <text class="stab-t">计算</text>
         </div>
-        <div class="seg">
-          <div class="seg-btn" @click="flipDeg"><text class="t-seg t-icon">‹</text></div>
-          <text class="seg-val" style="font-size: 27px">{{deg ? '角度' : '弧度'}}</text>
-          <div class="seg-btn" @click="flipDeg"><text class="t-seg t-icon">›</text></div>
+        <div class="stab-b {{tab=='display' ? 'stab-on' : 'stab-off'}}" @click="setTab('display')">
+          <text class="stab-t">显示</text>
+        </div>
+        <div class="stab-b {{tab=='about' ? 'stab-on' : 'stab-off'}}" @click="setTab('about')">
+          <text class="stab-t">关于</text>
         </div>
       </div>
 
-      <div class="row">
-        <div class="row-main">
-          <text class="row-title" style="font-size: 31px">精确显示</text>
-          <text class="row-sub" style="font-size: 23px">{{exact ? '优先 π、√2、分数' : '显示小数'}}</text>
+      <!-- 计算 -->
+      <div class="spanel" if="{{tab=='calc'}}">
+        <text class="sec" style="font-size: 23px">计算设置</text>
+
+        <div class="row">
+          <div class="row-main">
+            <text class="row-title" style="font-size: 31px">角度模式</text>
+            <text class="row-sub" style="font-size: 23px">{{deg ? 'sin 90 = 1' : 'sin π/2 = 1'}}</text>
+          </div>
+          <div class="seg">
+            <div class="seg-btn" @click="flipDeg"><text class="t-seg t-icon">‹</text></div>
+            <text class="seg-val" style="font-size: 27px">{{deg ? '角度' : '弧度'}}</text>
+            <div class="seg-btn" @click="flipDeg"><text class="t-seg t-icon">›</text></div>
+          </div>
         </div>
-        <div class="seg">
-          <div class="seg-btn" @click="flipExact"><text class="t-seg t-icon">‹</text></div>
-          <text class="seg-val" style="font-size: 27px">{{exact ? '精确' : '小数'}}</text>
-          <div class="seg-btn" @click="flipExact"><text class="t-seg t-icon">›</text></div>
+
+        <div class="row">
+          <div class="row-main">
+            <text class="row-title" style="font-size: 31px">精确显示</text>
+            <text class="row-sub" style="font-size: 23px">{{exact ? '优先 π、√2、分数' : '显示小数'}}</text>
+          </div>
+          <div class="seg">
+            <div class="seg-btn" @click="flipExact"><text class="t-seg t-icon">‹</text></div>
+            <text class="seg-val" style="font-size: 27px">{{exact ? '精确' : '小数'}}</text>
+            <div class="seg-btn" @click="flipExact"><text class="t-seg t-icon">›</text></div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="row-main">
+            <text class="row-title" style="font-size: 31px">按键震动</text>
+            <text class="row-sub" style="font-size: 23px">按下时轻震一下</text>
+          </div>
+          <div class="seg">
+            <div class="seg-btn" @click="flipVib"><text class="t-seg t-icon">‹</text></div>
+            <text class="seg-val" style="font-size: 27px">{{vib ? '开' : '关'}}</text>
+            <div class="seg-btn" @click="flipVib"><text class="t-seg t-icon">›</text></div>
+          </div>
+        </div>
+
+        <text class="sec" style="font-size: 23px">计算上限</text>
+        <div class="row">
+          <div class="row-main">
+            <text class="row-title" style="font-size: 29px">输入与结果</text>
+            <text class="row-sub" style="font-size: 23px">计算器 2048 字符、自由方程 1024、系数 256；符号 16384 个、嵌套 128 层；阶乘最大 5000；大数精确展开最多 60000 位</text>
+          </div>
+        </div>
+        <div class="row">
+          <div class="row-main">
+            <text class="row-title" style="font-size: 29px">超大结果</text>
+            <text class="row-sub" style="font-size: 23px">默认精确模式对长整数显示首尾和位数；打开“全部显示”后显示完整精确数字。大阶乘计算时显示进度</text>
+          </div>
         </div>
       </div>
 
-      <div class="row">
-        <div class="row-main">
-          <text class="row-title" style="font-size: 31px">按键震动</text>
-          <text class="row-sub" style="font-size: 23px">按下时轻震一下</text>
+      <!-- 显示 -->
+      <div class="spanel" if="{{tab=='display'}}">
+        <text class="sec" style="font-size: 23px">显示设置</text>
+        <div class="row">
+          <div class="row-main">
+            <text class="row-title" style="font-size: 31px">理科页字号</text>
+            <text class="row-sub" style="font-size: 23px">{{fsName}}号 · 化学/物理/生物页面</text>
+          </div>
+          <div class="seg">
+            <div class="seg-btn" @click="prevFs"><text class="t-seg t-icon">‹</text></div>
+            <text class="seg-val" style="font-size: 27px">{{fsName}}</text>
+            <div class="seg-btn" @click="nextFs"><text class="t-seg t-icon">›</text></div>
+          </div>
         </div>
-        <div class="seg">
-          <div class="seg-btn" @click="flipVib"><text class="t-seg t-icon">‹</text></div>
-          <text class="seg-val" style="font-size: 27px">{{vib ? '开' : '关'}}</text>
-          <div class="seg-btn" @click="flipVib"><text class="t-seg t-icon">›</text></div>
+        <div class="row">
+          <div class="row-main">
+            <text class="row-title" style="font-size: 31px">全部显示</text>
+            <text class="row-sub" style="font-size: 23px">{{full ? '精确模式显示完整数字' : '长数字显示首尾和位数'}}</text>
+          </div>
+          <div class="seg">
+            <div class="seg-btn" @click="flipFull"><text class="t-seg t-icon">‹</text></div>
+            <text class="seg-val" style="font-size: 27px">{{full ? '开' : '关'}}</text>
+            <div class="seg-btn" @click="flipFull"><text class="t-seg t-icon">›</text></div>
+          </div>
         </div>
-      </div>
-
-      <text class="sec" style="font-size: 23px">按键说明</text>
-      <div class="row" for="{{descs}}" tid="kd">
-        <div class="row-main">
-          <text class="row-title" style="font-size: 29px">{{$item.k}}</text>
-          <text class="row-sub" style="font-size: 23px">{{$item.d}}</text>
-        </div>
-      </div>
-
-      <text class="sec" style="font-size: 23px">关于</text>
-
-      <div class="row">
-        <div class="row-main">
-          <text class="row-title" style="font-size: 31px">数学助手 v1.6.0（GT2 移植）</text>
-          <text class="row-sub" style="font-size: 23px">计算器 · 方程求解 · 函数图像</text>
-        </div>
-      </div>
-
-      <div class="row">
-        <div class="row-main">
-          <text class="row-title" style="font-size: 29px">表达式支持</text>
-          <text class="row-sub" style="font-size: 23px">+ − × ÷ ^ % ! ° 与 π e；sin cos tan asin ln log √ abs 等；隐式乘法 2π、3(4+5)</text>
+        <div class="row">
+          <div class="row-main">
+            <text class="row-title" style="font-size: 29px">字号说明</text>
+            <text class="row-sub" style="font-size: 23px">小：元素 6 页；中：8 页；大：8 页但字更大。详情、摩尔质量和物理公式一起变</text>
+          </div>
         </div>
       </div>
 
-      <div class="row">
-        <div class="row-main">
-          <text class="row-title" style="font-size: 29px">方程</text>
-          <text class="row-sub" style="font-size: 23px">可直接写 2x+3=7、x²−3x=−2、2(x+3)=x−1，自动展开移项化为一般式再解</text>
+      <!-- 关于 -->
+      <div class="spanel" if="{{tab=='about'}}">
+        <text class="sec" style="font-size: 23px">按键说明</text>
+        <div class="row" for="{{descs}}" tid="kd">
+          <div class="row-main">
+            <text class="row-title" style="font-size: 29px">{{$item.k}}</text>
+            <text class="row-sub" style="font-size: 23px">{{$item.d}}</text>
+          </div>
         </div>
-      </div>
 
-      <div class="row">
-        <div class="row-main">
-          <text class="row-title" style="font-size: 29px">开源与致谢</text>
-          <text class="row-sub" style="font-size: 23px">MIT 许可。计算器界面与配色参考开源项目 Open_Modular_Boardgame_Companion（MIT，MinimumBubble11），界面布局参考其配套 UI 设计稿；表达式解析、方程求解、函数图像与求导为本工程自行实现。本版为 vivo WATCH GT 2（蓝河 BlueOS 3）移植版。</text>
+        <text class="sec" style="font-size: 23px">关于</text>
+        <div class="row">
+          <div class="row-main">
+            <text class="row-title" style="font-size: 31px">理科助手 v2.6.1（GT2 移植）</text>
+            <text class="row-sub" style="font-size: 23px">计算器 · 方程 · 图像 · 化学 · 物理 · 生物</text>
+          </div>
         </div>
-      </div>
 
-      <div class="count">
-        <text class="t-info" style="font-size: 23px">作者 模糊二维码byxz</text>
+        <div class="row">
+          <div class="row-main">
+            <text class="row-title" style="font-size: 29px">表达式支持</text>
+            <text class="row-sub" style="font-size: 23px">+ − × ÷ ^ % ! ° 与 π e；sin cos tan asin ln log √ abs 等；隐式乘法 2π、3(4+5)；|x| 绝对值、ⁿ√ n 次根 root(x,n)</text>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="row-main">
+            <text class="row-title" style="font-size: 29px">↑ 箭头与指数塔</text>
+            <text class="row-sub" style="font-size: 23px">键盘只保留一个 ↑ 按钮，按两次得到 ↑↑；^ 与 ↑ 都是幂。指数塔最多 10 层：2^3^2、2^3^2^2 可以，超过 10 层会提示“指数塔最多 10 层”</text>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="row-main">
+            <text class="row-title" style="font-size: 29px">方程</text>
+            <text class="row-sub" style="font-size: 23px">可写 2x+3=7、x²−3x=−2、2(x+3)=x−1；自由式没有 x 和等号时按四则/函数算式直接算，例如 1+2*3=7。结果同时给精确和小数两行</text>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="row-main">
+            <text class="row-title" style="font-size: 29px">化学</text>
+            <text class="row-sub" style="font-size: 23px">118 种元素分页卡片，默认 16 张/页、共 8 页；卡片显示原子量、s/p/d/f 区，底色按区固定。点元素看性质与方程式；摩尔质量支持括号和结晶水</text>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="row-main">
+            <text class="row-title" style="font-size: 29px">物理</text>
+            <text class="row-sub" style="font-size: 23px">速度、牛顿第二定律、功和功率、欧姆定律、密度、压强、液体压强、理想气体、波速、动能势能、热量 11 个公式；新增电路图编辑器：先选元件再点线段放置、串/并联判断、开关通断、电流表读数，并可转实物图</text>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="row-main">
+            <text class="row-title" style="font-size: 29px">生物</text>
+            <text class="row-sub" style="font-size: 23px">高中生物：细胞结构与功能、细胞代谢、遗传与变异、生命活动调节、生态系统，按知识点分页阅读</text>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="row-main">
+            <text class="row-title" style="font-size: 29px">开源与致谢</text>
+            <text class="row-sub" style="font-size: 23px">MIT 许可。计算器界面与配色参考 Open_Modular_Boardgame_Companion（MIT，MinimumBubble11）；表达式解析、方程求解、函数图像与求导为本工程实现。元素性质/方程式数据取自轻元素 1.0.6（用户提供并同意复用）；电路求解器、元件符号与实物外观移植自 circuit-lab（MIT）</text>
+          </div>
+        </div>
+
+        <div class="count">
+          <text class="t-info" style="font-size: 23px">作者 模糊二维码byxz</text>
+        </div>
       </div>
       <div class="gap"></div>
     </scroll>
@@ -107,27 +193,41 @@ import { descList } from '../../common/core/keys.js'
 
 export default {
   data: {
+    tab: 'calc',
     deg: false,
     exact: false,
     vib: true,
+    fs: 1,
+    fsName: '中',
+    full: false,
     descs: descList(),
   },
 
   onShow() {
+    appGlobal.bind(this.$app)
     this.sync()
   },
 
   sync() {
-    const app = appGlobal
-    this.deg = !!app.deg
-    this.exact = !!app.exact
-    this.vib = !!app.vib
+    this.deg = appGlobal.degOn()
+    this.exact = appGlobal.exactOn()
+    this.vib = appGlobal.vibOn()
+    this.fs = appGlobal.fsOn()
+    this.fsName = this.fs === 0 ? '小' : this.fs === 2 ? '大' : '中'
+    this.full = appGlobal.fullOn()
   },
 
-  flipDeg() { const app = appGlobal; app.tap(); app.setDeg(!app.deg); this.sync() },
-  flipExact() { const app = appGlobal; app.tap(); app.setExact(!app.exact); this.sync() },
-  flipVib() { const app = appGlobal; app.tap(); app.setVib(!app.vib); this.sync() },
+  setTab(k) {
+    appGlobal.tap()
+    this.tab = k
+  },
 
+  flipDeg() { appGlobal.tap(); appGlobal.setDeg(!appGlobal.degOn()); this.sync() },
+  flipExact() { appGlobal.tap(); appGlobal.setExact(!appGlobal.exactOn()); this.sync() },
+  flipVib() { appGlobal.tap(); appGlobal.setVib(!appGlobal.vibOn()); this.sync() },
+  prevFs() { appGlobal.tap(); appGlobal.setFs(appGlobal.fsOn() - 1); this.sync() },
+  nextFs() { appGlobal.tap(); appGlobal.setFs(appGlobal.fsOn() + 1); this.sync() },
+  flipFull() { appGlobal.tap(); appGlobal.setFull(!appGlobal.fullOn()); this.sync() },
 
   back() {
     appGlobal.tap()
@@ -139,13 +239,18 @@ export default {
 <style>
   @import '../../common/style/base.css';
 
-  .count {
-    width: 100%;
-    height: 43px;
-    align-items: center;
-    justify-content: center;
-    margin-top: 11px;
+  .spanel { width: 100%; flex-direction: column; flex-shrink: 0; }
+  .stab {
+    width: 100%; height: 48px; flex-direction: row; align-items: center;
+    justify-content: center; flex-shrink: 0; margin-top: 6px; margin-bottom: 8px;
   }
+  .stab-b {
+    width: 120px; height: 40px; border-radius: 20px; align-items: center; justify-content: center;
+    margin-left: 4px; margin-right: 4px;
+  }
+  .stab-on { background-color: #2f6fed; }
+  .stab-off { background-color: #1c1c1e; }
+  .stab-t { font-size: 18px; color: #ffffff; text-align: center; }
 
-  .gap { width: 100%; height: 14px; }
+  .gap { width: 100%; height: 22px; }
 </style>

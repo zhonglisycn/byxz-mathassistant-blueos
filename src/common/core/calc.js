@@ -10,15 +10,23 @@
  *   数字      3  3.14  .5  1e3
  *   常量      π  pi  e
  *   运算      + - * / × ÷ %(取余) ^ 或 **(幂，右结合)
- *   后缀      !(阶乘 0~170)  °(角度转弧度)  ²  ³
- *   函数      sin cos tan asin acos atan sinh cosh tanh sqrt √ abs ln log log2 exp floor ceil round max min
- *   括号      ( )        逗号用于多参数函数 max(1,2)
+ *   箭头      ↑(同 ^)  ↑↑(四阶/tetration)  ↑↑↑(五阶/pentation，极小范围)
+ *   后缀      !(阶乘 0~2000)  °(角度转弧度)  ²  ³
+ *   函数      sin cos tan asin acos atan sinh cosh tanh
+ *             sqrt √ abs ln log log2 exp floor ceil round max min root
+ *   绝对值    |x|（等价 abs(x)）
+ *   括号      ( )        逗号用于多参数函数 max(1,2)、root(8,3)
  *   隐式乘法  2π  3(4+5)  (1+2)(3+4)  2sin(30)
+ *
+ * 上限与护栏（见 common/core/limits.js）：
+ *   token 数 ≤ 4096；括号/函数/幂嵌套 ≤ 64 层；求值递归 ≤ 1024 层；
+ *   幂/箭头结果 > 1e308 → "数值过大"，迭代次数 > 1e6 → "太大，拒绝计算"。
  *
  * 角度模式：env.deg 为 true 时 sin/cos/tan 的入参按度、asin/acos/atan 的返回值按度。
  */
 
 import { isC, toC, norm, cAdd, cSub, cMul, cDiv, cNeg, cAbs, cSqrt, cLn, cExp, cPow, fmtComplex } from './complex.js'
+import { LIMITS } from './limits.js'
 
 const PI = Math.PI
 const E = Math.E
@@ -30,7 +38,7 @@ const E = Math.E
 const FUNCS = {
   sin: 1, cos: 1, tan: 1, asin: 1, acos: 1, atan: 1,
   sinh: 1, cosh: 1, tanh: 1,
-  sqrt: 1, abs: 1, ln: 1, log: 1, log2: 1, exp: 1,
+  sqrt: 1, root: 2, abs: 1, ln: 1, log: 1, log2: 1, exp: 1,
   floor: 1, ceil: 1, round: 1, max: 2, min: 2
 }
 
@@ -71,6 +79,16 @@ function tokenize(src) {
     }
     if (c === 'π') { out.push({ t: 'num', v: PI }); i++; continue }
     if (c === '√') { out.push({ t: 'func', v: 'sqrt' }); i++; continue }
+    if (c === '|') { out.push({ t: 'bar' }); i++; continue }
+    if (c === '↑') {
+      // 连续箭头：↑ / ↑↑ / ↑↑↑
+      let n = 1
+      while (s[i + n] === '↑') n++
+      if (n > 6) throw new Error('箭头最多 6 个')
+      out.push({ t: 'op', v: '↑'.repeat(n) })
+      i += n
+      continue
+    }
     if (c === '×') { out.push({ t: 'op', v: '*' }); i++; continue }
     if (c === '÷') { out.push({ t: 'op', v: '/' }); i++; continue }
     if (c === '−') { out.push({ t: 'op', v: '-' }); i++; continue }
@@ -84,6 +102,9 @@ function tokenize(src) {
     if (c === ')') { out.push({ t: 'rp' }); i++; continue }
     if (c === ',') { out.push({ t: 'comma' }); i++; continue }
     throw new Error('无法识别的字符：' + c)
+  }
+  if (out.length > LIMITS.tokens) {
+    throw new Error('算式太长（最多 ' + LIMITS.tokens + ' 个符号）')
   }
   return out
 }
@@ -99,7 +120,11 @@ function tokenize(src) {
 /* ------------------------------------------------------------------ */
 
 function parse(tokens) {
+  if (tokens.length > LIMITS.tokens) {
+    throw new Error('算式太长（最多 ' + LIMITS.tokens + ' 个符号）')
+  }
   let p = 0
+  let depth = 0
   const peek = () => tokens[p]
   const eat = (t, v) => {
     const k = tokens[p]
@@ -107,37 +132,59 @@ function parse(tokens) {
     p++
     return k
   }
+  /** 括号 / 函数 / 幂的嵌套深度护栏：防止恶意长串把栈打穿 */
+  const nested = (fn) => {
+    if (++depth > LIMITS.depth) {
+      depth--
+      throw new Error('嵌套层数太多（最多 ' + LIMITS.depth + ' 层）')
+    }
+    try {
+      return fn()
+    } finally {
+      depth--
+    }
+  }
 
-  function expr() {
-    let node = term()
+  function expr(stopBar) {
+    let node = term(stopBar)
     for (;;) {
       const k = peek()
-      if (k && k.t === 'op' && (k.v === '+' || k.v === '-')) { p++; node = { t: k.v, a: node, b: term() } }
+      if (k && k.t === 'op' && (k.v === '+' || k.v === '-')) { p++; node = { t: k.v, a: node, b: term(stopBar) } }
       else return node
     }
   }
 
-  function term() {
+  function term(stopBar) {
     let node = unary()
     for (;;) {
       const k = peek()
       if (k && k.t === 'op' && (k.v === '*' || k.v === '/' || k.v === '%')) { p++; node = { t: k.v, a: node, b: unary() } }
-      // 隐式乘法：2π、3(4+5)、(1+2)(3+4)、2sin(30)
-      else if (k && (k.t === 'num' || k.t === 'func' || k.t === 'lp' || k.t === 'var' || k.t === 'imag')) { node = { t: '*', a: node, b: unary() } }
+      // 隐式乘法：2π、3(4+5)、(1+2)(3+4)、2sin(30)、2|x|
+      // stopBar=true 时（绝对值内部）bar 是收尾符，不能当乘号吃进去
+      else if (k && (k.t === 'num' || k.t === 'func' || k.t === 'lp' || k.t === 'var' || k.t === 'imag' || (k.t === 'bar' && !stopBar))) { node = { t: '*', a: node, b: unary() } }
       else return node
     }
   }
 
   function unary() {
     const k = peek()
-    if (k && k.t === 'op' && (k.v === '-' || k.v === '+')) { p++; const v = unary(); return k.v === '-' ? { t: 'neg', a: v } : v }
+    if (k && k.t === 'op' && (k.v === '-' || k.v === '+')) {
+      p++
+      const v = nested(() => unary())
+      return k.v === '-' ? { t: 'neg', a: v } : v
+    }
     return power()
   }
 
   function power() {
     const base = postfix()
     const k = peek()
-    if (k && k.t === 'op' && k.v === '^') { p++; return { t: '^', a: base, b: unary() } }   // 右结合
+    if (k && k.t === 'op' && (k.v === '^' || /^↑+$/.test(k.v))) {
+      p++
+      // 右结合：2^3^2 = 512，2↑3↑2 = 2↑(3↑2) = 512
+      const rhs = nested(() => unary())
+      return k.v === '^' ? { t: '^', a: base, b: rhs } : { t: 'arrow', v: k.v, a: base, b: rhs }
+    }
     return base
   }
 
@@ -166,20 +213,27 @@ function parse(tokens) {
       p++
       const args = []
       if (eat('lp')) {
-        args.push(expr())
-        while (eat('comma')) args.push(expr())
+        args.push(nested(() => expr()))
+        while (eat('comma')) args.push(nested(() => expr()))
         if (!eat('rp')) throw new Error('括号不匹配')
       } else {
         // √9、sin30 这类省略括号的写法：只吃一个一元表达式
-        args.push(unary())
+        args.push(nested(() => unary()))
       }
       return { t: 'call', v: k.v, args: args }
     }
     if (k.t === 'lp') {
       p++
-      const node = expr()
+      const node = nested(() => expr())
       if (!eat('rp')) throw new Error('括号不匹配')
       return node
+    }
+    if (k.t === 'bar') {
+      // |x| → abs(x)；内部表达式遇到配对的 | 就停（stopBar）
+      p++
+      const node = nested(() => expr(true))
+      if (!eat('bar')) throw new Error('绝对值缺少收尾的 |')
+      return { t: 'call', v: 'abs', args: [node] }
     }
     throw new Error('算式不完整')
   }
@@ -189,6 +243,21 @@ function parse(tokens) {
     const k = tokens[p]
     throw new Error(k.t === 'rp' ? '多余的右括号' : '算式有误：' + (k.v === undefined ? '符号' : k.v))
   }
+  // 指数塔只允许 2 层：2^3^2 可以，2^3^2^2 / 2^(3^(4^5)) 拒绝。
+  // 只数右侧链；左边 (2^3)^2 不是塔，正常算。
+  function rightTower(n) {
+    let d = 0
+    while (n && n.t === '^') { d++; n = n.b }
+    return d
+  }
+  function checkTower(n) {
+    if (!n || typeof n !== 'object') return
+    if (n.t === '^' && rightTower(n) > LIMITS.towerDepth) throw new Error('指数塔最多 ' + LIMITS.towerDepth + ' 层')
+    checkTower(n.a)
+    checkTower(n.b)
+    if (n.args) for (let i = 0; i < n.args.length; i++) checkTower(n.args[i])
+  }
+  checkTower(node)
   return node
 }
 
@@ -196,7 +265,7 @@ function parse(tokens) {
 /* 求值                                                               */
 /* ------------------------------------------------------------------ */
 
-const FACT_MAX = 1000              // 阶乘上限
+const FACT_MAX = LIMITS.factMax
 
 /**
  * 十进制大整数：只用来"乘以一个小整数"，所以用数组存每一位（低位在前）就够。
@@ -220,6 +289,29 @@ function mulSmall(digits, m) {
 function factDigits(n) {
   const d = [1]
   for (let i = 2; i <= n; i++) mulSmall(d, i)
+  let s = ''
+  for (let i = d.length - 1; i >= 0; i--) s += d[i]
+  return s
+}
+
+/** 阶乘分步任务：给计算器页做真实进度条用（不参与普通求值） */
+export function createFactorialJob(n) {
+  const top = Math.max(0, Math.floor(n))
+  const d = [1]
+  let i = 2
+  const total = Math.max(1, top - 1)
+  return {
+    step(k) {
+      let c = 0
+      while (i <= top && c < k) { mulSmall(d, i); i++; c++ }
+    },
+    done() { return i > top },
+    progress() { return Math.min(1, (i - 2) / total) },
+    digits() { return factDigitsString(d) },
+  }
+}
+
+function factDigitsString(d) {
   let s = ''
   for (let i = d.length - 1; i >= 0; i--) s += d[i]
   return s
@@ -253,6 +345,7 @@ function noBig(v, what) {
 
 function factorial(n) {
   if (n < 0 || Math.round(n) !== n) throw new Error('阶乘只支持非负整数')
+  if (n > LIMITS.iterMax) throw new Error('太大，拒绝计算')
   if (n > FACT_MAX) throw new Error('阶乘最大支持 ' + FACT_MAX)
   if (n <= 18) {                       // 18! 还在 2^53 以内，直接乘就是精确的
     let r = 1
@@ -262,6 +355,144 @@ function factorial(n) {
   const s = factDigits(n)
   if (s.length <= 309) return approxOf(s)   // 170! 以内 Number 还能近似表示
   return bigResult(s)                        // 再大：走大数通道
+}
+
+/**
+ * 幂结果护栏：实数/虚部任一项超 1e308 或非有限 → "数值过大"。
+ * 统一走这里，^、↑、↑↑、↑↑↑ 用的是同一套上限。
+ */
+function powValue(a, b) {
+  const v = cPow(a, b)
+  const c = toC(v)
+  if (!isFinite(c.re) || !isFinite(c.im) || Math.abs(c.re) > LIMITS.numMax || Math.abs(c.im) > LIMITS.numMax) {
+    throw new Error('数值过大')
+  }
+  return v
+}
+
+/** n 次根：n 为非零整数；奇次根允许负数，偶次根负数 → 复数（主值） */
+function nthRoot(x, n) {
+  if (isC(n)) throw new Error('根的次数必须是整数')
+  if (Math.round(n) !== n || n === 0) throw new Error('根的次数必须是非零整数')
+  const k = Math.abs(n)
+  let r
+  if (!isC(x) && x < 0 && k % 2 === 1) {
+    r = -Math.pow(-x, 1 / k)
+  } else if (!isC(x) && x < 0) {
+    r = cPow(x, 1 / k)              // √-4 → 2i，四次根负数同理走复数
+  } else {
+    r = powValue(x, 1 / k)
+  }
+  if (n < 0) {
+    if (isC(r)) {
+      const d = r.re * r.re + r.im * r.im
+      if (d === 0) throw new Error('除以零')
+      r = norm({ re: r.re / d, im: -r.im / d })
+    } else {
+      if (r === 0) throw new Error('除以零')
+      r = 1 / r
+    }
+  }
+  return r
+}
+
+/** 大整数：base 1e7 limbs，用于 ↑↑ 的精确展开 */
+const BIG_DIGITS = 60000
+const BIG_EXP_MAX = 500000
+
+function limbsOf(n) {
+  n = Math.abs(Math.floor(n))
+  const a = []
+  while (n > 0) { a.push(n % 10000000); n = Math.floor(n / 10000000) }
+  return a.length ? a : [0]
+}
+function mulLimbs(a, b) {
+  const r = new Array(a.length + b.length).fill(0)
+  for (let i = 0; i < a.length; i++) {
+    let carry = 0
+    for (let j = 0; j < b.length; j++) {
+      const v = r[i + j] + a[i] * b[j] + carry
+      r[i + j] = v % 10000000
+      carry = Math.floor(v / 10000000)
+    }
+    let k = i + b.length
+    while (carry) { const v = r[k] + carry; r[k] = v % 10000000; carry = Math.floor(v / 10000000); k++ }
+  }
+  while (r.length > 1 && r[r.length - 1] === 0) r.pop()
+  return r
+}
+function limbsToStr(a) {
+  let s = String(a[a.length - 1])
+  for (let i = a.length - 2; i >= 0; i--) s += ('0000000' + a[i]).slice(-7)
+  return s
+}
+function bigPowExact(base, exp) {
+  if (exp === 0) return 1
+  if (base === 0) return 0
+  if (base === 1) return 1
+  if (!(exp > 0) || Math.floor(exp) !== exp) return null
+  const digits = Math.floor(exp * Math.log10(base)) + 1
+  if (digits > BIG_DIGITS || exp > BIG_EXP_MAX) return null
+  let result = [1]
+  let b = limbsOf(base)
+  let e = exp
+  while (e > 0) {
+    if (e & 1) result = mulLimbs(result, b)
+    e = Math.floor(e / 2)
+    if (e) b = mulLimbs(b, b)
+  }
+  const str = limbsToStr(result)
+  return str.length <= 15 ? Number(str) : bigResult(str)
+}
+function towerResult(label) {
+  return { __big: true, tower: true, expr: label, exact: label, sci: '', digits: 0 }
+}
+function arrowLabel(a, b, k) {
+  return String(a) + '↑'.repeat(k) + String(b)
+}
+/** 整数 a 的 k 级高纳德箭头；算不尽时返回箭头表示 */
+function hyperInt(a, b, k) {
+  if (b === 0) return 1
+  if (b === 1) return a
+  if (a === 0) return k === 1 ? 0 : (b === 1 ? 0 : 0)
+  if (a === 1) return 1
+  if (b > 1000) return towerResult(arrowLabel(a, b, k))
+  if (k === 1) return bigPowExact(a, b) || towerResult(arrowLabel(a, b, 1))
+  if (b > 100000) return towerResult(arrowLabel(a, b, k))
+  const inner = hyperInt(a, b - 1, k)
+  if (inner && inner.__big) return towerResult(arrowLabel(a, b, k))
+  if (typeof inner !== 'number' || !isFinite(inner) || inner < 0) return towerResult(arrowLabel(a, b, k))
+  if (k === 2) {
+    const v = bigPowExact(a, inner)
+    return v === null ? towerResult(arrowLabel(a, b, k)) : v
+  }
+  return hyperInt(a, inner, k - 1)
+}
+
+/**
+ * 箭头运算：↑ = 幂；↑↑ = tetration；↑↑↑ = pentation；支持 1~6 个箭头。
+ * 能精确展开时返回大整数（最多 3 万位），否则保留 a↑↑b 的箭头表示。
+ */
+function arrowValue(op, a, b) {
+  if (op === '↑') return powValue(a, b)
+  const bc = toC(b)
+  if (Math.abs(bc.im) > 1e-12 || Math.round(bc.re) !== bc.re) {
+    throw new Error(op + ' 的阶数必须是整数')
+  }
+  const n = bc.re
+  if (n < 0) throw new Error(op + ' 的阶数不能为负')
+  const ac = toC(a)
+  const k = op.length
+  if (!isC(a) && Math.abs(ac.im) < 1e-12 && Math.round(ac.re) === ac.re && ac.re >= 0) {
+    const out = hyperInt(ac.re, n, k)
+    return (out && out.__big && out.tower) ? towerResult(arrowLabel(ac.re, n, k)) : out
+  }
+  // 非整数底数：只保留小范围数值迭代
+  if (k > 2) throw new Error(op + ' 需要整数底数')
+  if (n > LIMITS.tetraB) throw new Error('数值过大')
+  let r = 1
+  for (let i = 0; i < n; i++) r = powValue(a, r)
+  return r
 }
 
 function callFn(name, args, env) {
@@ -296,6 +527,10 @@ function callFn(name, args, env) {
     case 'tanh': return Math.tanh(real1(need1()))
     // 负数开平方给出虚数结果（√-4 = 2i）
     case 'sqrt': return cSqrt(need1())
+    case 'root': {
+      if (args.length !== 2) throw new Error('root 需要 2 个参数：root(x, n)')
+      return nthRoot(args[0], args[1])
+    }
     case 'abs': return cAbs(need1())
     case 'ln': return cLn(need1())
     case 'log': return cDiv(cLn(need1()), Math.LN10)
@@ -312,44 +547,53 @@ function callFn(name, args, env) {
 
 /** 对语法树求值。env 可含 { x, deg } */
 export function evalAst(node, env) {
-  const e = env || {}
+  return evalNode(node, env || {}, 0)
+}
+
+/** 递归求值；d 是当前深度，超过上限就报错而不是把栈打穿 */
+function evalNode(node, e, d) {
+  if (d > LIMITS.evalDepth) throw new Error('算式嵌套太深（最多 ' + LIMITS.evalDepth + ' 层）')
+  const dd = d + 1
   switch (node.t) {
     case 'num': return node.v
     case 'imag': return { re: 0, im: 1 }
     case 'var':
       if (typeof e.x !== 'number') throw new Error('算式里有未知的 x')
       return e.x
-    case 'neg': return cNeg(noBig(evalAst(node.a, e), '取负'))
-    case '+': return cAdd(noBig(evalAst(node.a, e), '加法'), noBig(evalAst(node.b, e), '加法'))
-    case '-': return cSub(noBig(evalAst(node.a, e), '减法'), noBig(evalAst(node.b, e), '减法'))
-    case '*': return cMul(noBig(evalAst(node.a, e), '乘法'), noBig(evalAst(node.b, e), '乘法'))
+    case 'neg': return cNeg(noBig(evalNode(node.a, e, dd), '取负'))
+    case '+': return cAdd(noBig(evalNode(node.a, e, dd), '加法'), noBig(evalNode(node.b, e, dd), '加法'))
+    case '-': return cSub(noBig(evalNode(node.a, e, dd), '减法'), noBig(evalNode(node.b, e, dd), '减法'))
+    case '*': return cMul(noBig(evalNode(node.a, e, dd), '乘法'), noBig(evalNode(node.b, e, dd), '乘法'))
     case '/': {
-      const d = noBig(evalAst(node.b, e), '除法')
-      if (cAbs(d) === 0) throw new Error('除以零')
-      return cDiv(noBig(evalAst(node.a, e), '除法'), d)
+      const d0 = noBig(evalNode(node.b, e, dd), '除法')
+      if (cAbs(d0) === 0) throw new Error('除以零')
+      return cDiv(noBig(evalNode(node.a, e, dd), '除法'), d0)
     }
     case '%': {
-      const a = noBig(evalAst(node.a, e), '取余')
-      const d = noBig(evalAst(node.b, e), '取余')
-      if (isC(d) || isC(a)) throw new Error('取余不支持复数')
-      if (d === 0) throw new Error('除以零')
-      return a % d
+      const a = noBig(evalNode(node.a, e, dd), '取余')
+      const d0 = noBig(evalNode(node.b, e, dd), '取余')
+      if (isC(d0) || isC(a)) throw new Error('取余不支持复数')
+      if (d0 === 0) throw new Error('除以零')
+      return a % d0
     }
     case '^': {
-      const a = noBig(evalAst(node.a, e), '乘方')
-      const b = noBig(evalAst(node.b, e), '乘方')
-      const v = cPow(a, b)
-      if (!isC(v) && !isFinite(v)) throw new Error('幂运算结果超出范围')
-      return v
+      const a = noBig(evalNode(node.a, e, dd), '乘方')
+      const b = noBig(evalNode(node.b, e, dd), '乘方')
+      return powValue(a, b)
+    }
+    case 'arrow': {
+      const a = noBig(evalNode(node.a, e, dd), '箭头运算')
+      const b = noBig(evalNode(node.b, e, dd), '箭头运算')
+      return arrowValue(node.v, a, b)
     }
     case 'fact': {
-      const v = noBig(evalAst(node.a, e), '阶乘')
+      const v = noBig(evalNode(node.a, e, dd), '阶乘')
       if (isC(v)) throw new Error('阶乘不支持复数')
       return factorial(v)
     }
     case 'call': {
       const args = []
-      for (let i = 0; i < node.args.length; i++) args.push(noBig(evalAst(node.args[i], e), node.v))
+      for (let i = 0; i < node.args.length; i++) args.push(noBig(evalNode(node.args[i], e, dd), node.v))
       return callFn(node.v, args, e)
     }
   }
@@ -384,6 +628,7 @@ export function evaluate(src, opts) {
         ok: true, huge: true,
         value: undefined, re: NaN, im: 0, complex: false,
         digits: v.digits, exact: v.exact, sci: v.sci,
+        tower: !!v.tower, expr: v.expr || '',
         ast: ast
       }
     }
@@ -515,6 +760,44 @@ export function display(v, exact) {
   return formatNumber(v)
 }
 
+/**
+ * 把本工程产生的精确串还原成数值（测试"精确行与小数行一致"用）：
+ *   3、-3/4、√2、2√2、√3/2、-√3/2、π、2π、π/2、-2π/3
+ * 解析不了（超大阶乘、复数等）返回 null。
+ */
+export function exactToNumber(s) {
+  if (s === null || s === undefined) return null
+  let t = String(s).trim().replace(/−/g, '-').replace(/\s+/g, '')
+  if (!t || t.indexOf('i') >= 0) return null
+  let sign = 1
+  if (t.charAt(0) === '-') { sign = -1; t = t.slice(1) } else if (t.charAt(0) === '+') { t = t.slice(1) }
+  let num = t
+  let den = 1
+  const slash = t.indexOf('/')
+  if (slash >= 0) {
+    num = t.slice(0, slash)
+    den = parseFloat(t.slice(slash + 1))
+    if (!isFinite(den) || den === 0) return null
+  }
+  let val
+  const pi = num.indexOf('π')
+  const rt = num.indexOf('√')
+  if (pi >= 0) {
+    const a = pi === 0 ? 1 : parseFloat(num.slice(0, pi))
+    if (!isFinite(a)) return null
+    val = a * PI
+  } else if (rt >= 0) {
+    const a = rt === 0 ? 1 : parseFloat(num.slice(0, rt))
+    const b = parseFloat(num.slice(rt + 1))
+    if (!isFinite(a) || !isFinite(b)) return null
+    val = a * Math.sqrt(b)
+  } else {
+    val = parseFloat(num)
+    if (!isFinite(val)) return null
+  }
+  return sign * val / den
+}
+
 
 /* ------------------------------------------------------------------ */
 /* 有理数精确计算：整条算式都是有理数、且只用 + − × ÷ 与整数次幂时，   */
@@ -614,12 +897,13 @@ function exactPart(v, exactMode) {
 }
 
 /** 结果格式化：支持复数与精确模式（优先用有理数精确值） */
-export function displayResult(res, exactMode) {
+export function displayResult(res, exactMode, full) {
   if (!res) return ''
   if (!res.ok) return res.err || '计算错误'
   // 超大阶乘：位数不多（≤40 位）时给完整整数，否则给科学计数法，精确模式补上位数
   if (res.huge) {
-    if (exactMode) return res.digits <= 40 ? res.exact : (res.sci + '（' + res.digits + ' 位）')
+    if (res.tower) return exactMode ? res.expr : (res.expr + '（无法完整展开）')
+    if (exactMode) return full ? String(res.exact) : (res.digits <= 40 ? res.exact : (res.sci + '（' + res.digits + ' 位）'))
     return res.sci
   }
   const one = (x) => {
@@ -630,6 +914,12 @@ export function displayResult(res, exactMode) {
     return formatNumber(x)
   }
   if (res.complex) return fmtComplex({ re: res.re, im: res.im }, one)
-  if (exactMode && res.exact) return res.exact
+  if (exactMode && res.exact) {
+    const s = String(res.exact)
+    if (full) return s
+    // 默认给首尾 + 位数，避免 100! 这类长整数把屏幕撑爆。
+    if (s.length > 48) return s.slice(0, 18) + '…' + s.slice(-8) + '（' + s.length + ' 位）'
+    return s
+  }
   return one(res.re)
 }

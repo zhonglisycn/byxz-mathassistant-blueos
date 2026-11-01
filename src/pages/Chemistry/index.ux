@@ -1,0 +1,541 @@
+<template>
+  <div class="page chem">
+    <div class="stage">
+    <div class="hd">
+      <text class="back" @click="back">‹</text>
+      <text class="title">{{mode=='detail' ? '元素详情' : '化学'}}</text>
+    </div>
+
+    <div class="tabs" if="{{mode!='detail'}}">
+      <div class="tab {{mode=='table' ? 'tab-on' : 'tab-off'}}" @click="setMode('table')">
+        <text class="tab-t">元素</text>
+      </div>
+      <div class="tab {{mode=='mass' ? 'tab-on' : 'tab-off'}}" @click="setMode('mass')">
+        <text class="tab-t">摩尔质量</text>
+      </div>
+    </div>
+
+    <!-- 分页元素卡片：每页只渲染当前页，避免 118 格整表把真机拖死 -->
+    <div class="elist" if="{{mode=='table'}}">
+      <div class="pchips">
+        <text class="pclabel">周期</text>
+        <div class="pchip" for="{{periods}}" tid="i" @click="jumpPeriod($item.p)">
+          <text class="pchip-t">{{$item.t}}</text>
+        </div>
+      </div>
+
+      <div class="ecards" style="height:{{cardsH}}px;min-height:{{cardsH}}px">
+        <div class="ecard {{$item.cls}}" for="{{cards}}" tid="i" style="width:{{$item.w}}px;height:{{$item.h}}px;min-width:{{$item.w}}px;min-height:{{$item.h}}px" @click="pick($item.n)">
+          <text class="e-num" style="font-size:{{$item.ns}}px;height:{{$item.nh}}px;line-height:{{$item.nh}}px">#{{$item.no}}</text>
+          <text class="e-sym" style="font-size:{{$item.ss}}px;height:{{$item.sh}}px;line-height:{{$item.sh}}px">{{$item.sym}}</text>
+          <text class="e-name" style="font-size:{{$item.nm}}px;height:{{$item.nmh}}px;line-height:{{$item.nmh}}px">{{$item.name}}</text>
+          <text class="e-info" if="{{$item.info}}" style="font-size:{{$item.is}}px;height:{{$item.ih}}px;line-height:{{$item.ih}}px">{{$item.info}}</text>
+        </div>
+      </div>
+
+      <div class="pager">
+        <div class="pbtn" @click="prevPage"><text class="pbtn-t">‹ 上一页</text></div>
+        <text class="pinfo">第 {{page + 1}}/{{pageCount}} 页 · {{pageText}}</text>
+        <div class="pbtn" @click="nextPage"><text class="pbtn-t">下一页 ›</text></div>
+      </div>
+    </div>
+
+    <!-- 全屏元素详情 -->
+    <scroll class="dscroll d-fs{{fs}}" scroll-y if="{{mode=='detail'}}">
+      <div class="dhead">
+        <text class="dsym {{selCls}}">{{sel.symbol}}</text>
+        <div class="dmeta">
+          <text class="dname">{{sel.name}}</text>
+          <text class="dnum">#{{sel.number}} · {{selCat}}</text>
+          <text class="dcat">{{selPos}}</text>
+        </div>
+      </div>
+
+      <div class="dinfo">
+        <div class="di"><text class="dil">相对原子质量</text><text class="div">{{sel.mass}}</text></div>
+        <div class="di"><text class="dil">常见化合价</text><text class="div">{{sel.valence}}</text></div>
+        <div class="di"><text class="dil">周期 / 族</text><text class="div">{{selPos}}</text></div>
+        <div class="di"><text class="dil">元素分类</text><text class="div">{{selCat}}</text></div>
+      </div>
+
+      <text class="dh">化学性质</text>
+      <text class="dprop">{{sel.properties ? sel.properties : '暂无资料'}}</text>
+
+      <text class="dh" if="{{sel.equations.length > 0}}">相关化学方程式</text>
+      <text class="deq" for="{{sel.equations}}" tid="i">{{$item}}</text>
+
+      <div class="dbtn" @click="setMode('table')">
+        <text class="dbt">‹ 返回元素列表</text>
+      </div>
+      <div class="dend"></div>
+    </scroll>
+
+    <!-- 摩尔质量 -->
+    <div class="mcard" if="{{mode=='mass'}}">
+      <text class="m-label">化学式</text>
+      <text class="m-formula {{formula ? 'm-formula-on' : ''}}">{{formula ? formula : '点击下方按键输入'}}</text>
+      <text class="m-hint">支持括号与结晶水 · 如 Ca(OH)2、CuSO4.5H2O</text>
+      <div class="pick" @click="openPicker">
+        <text class="pick-t">+ 元素</text>
+      </div>
+    </div>
+
+    <div class="mres" if="{{mode=='mass'}}">
+      <text class="m-mass" if="{{mmMass}}">M = {{mmMass}} g/mol</text>
+      <text class="m-break" if="{{mmMass}}">{{mmBreak}}</text>
+      <text class="m-err" if="{{mmErr}}">{{mmErr}}</text>
+      <text class="m-empty" if="{{!mmMass && !mmErr}}">输入化学式后自动计算相对分子质量</text>
+    </div>
+
+    <div class="keys" if="{{mode=='mass'}}">
+      <div class="kgrid">
+        <div class="ck" for="{{keys}}" tid="i" @click="keyTap($item.txt)">
+          <text class="ck-t" style="font-size:{{keyFont}}px">{{$item.txt}}</text>
+        </div>
+      </div>
+      <div class="kacts">
+        <div class="act" @click="keyTap('0')"><text class="act-t">0</text></div>
+        <div class="act act-dim" @click="clearAll"><text class="act-t">清空</text></div>
+        <div class="act act-dim" @click="backspace"><text class="act-t">删</text></div>
+        <div class="act act-calc" @click="calcMM(true)"><text class="act-t">计算</text></div>
+      </div>
+    </div>
+    </div>
+  </div>
+</template>
+
+<script>
+import router from '@blueos.app.appmanager.router'
+import appGlobal from '../../common/core/app.js'
+import { elements } from '../../common/data/elements.js'
+import { molarMass, fmtMass, countsText, CAT_NAMES, blockOf } from '../../common/core/chem.js'
+
+const KEY_ROWS = [
+  ['H', 'C', 'N', 'O', 'Na', 'Cl'],
+  ['K', 'Ca', 'Mg', 'Al', 'Fe', 'Cu'],
+  ['Zn', 'Ag', 'Ba', 'S', 'P', 'Si'],
+  ['(', ')', '.', '1', '2', '3'],
+  ['4', '5', '6', '7', '8', '9'],
+]
+
+const PERIOD_START = [0, 0, 2, 10, 18, 36, 54, 86]
+
+const FS_LAYOUT = [
+  { cols: 4, rows: 5, w: 94, h: 62, gap: 8, ns: 9, ss: 22, nm: 12, is: 0 },
+  { cols: 4, rows: 4, w: 94, h: 80, gap: 8, ns: 10, ss: 28, nm: 14, is: 10 },
+  { cols: 4, rows: 4, w: 94, h: 82, gap: 6, ns: 11, ss: 31, nm: 15, is: 10 },
+]
+
+export default {
+  data: {
+    mode: 'table',
+    fs: 1,
+    cards: [],
+    cardsH: 352,
+    periods: [
+      { p: 1, t: '1' }, { p: 2, t: '2' }, { p: 3, t: '3' }, { p: 4, t: '4' },
+      { p: 5, t: '5' }, { p: 6, t: '6' }, { p: 7, t: '7' },
+    ],
+    page: 0,
+    perPage: 16,
+    pageCount: 8,
+    pageText: '',
+    keys: [],
+    keyFont: 17,
+    sel: elements[0],
+    selCls: 'd-nonmetal',
+    selCat: CAT_NAMES.nonmetal,
+    selPos: '第 1 周期 · 第 1 族',
+    pickMode: false,
+    formula: '',
+    mmMass: '',
+    mmBreak: '',
+    mmErr: '',
+  },
+
+  onShow() {
+    appGlobal.bind(this.$app)
+    this.fs = appGlobal.fsOn()
+    this.keyFont = this.fs === 0 ? 15 : this.fs === 2 ? 20 : 17
+    this.buildKeys()
+    this.buildCards()
+  },
+
+  buildCards() {
+    const lay = FS_LAYOUT[this.fs] || FS_LAYOUT[1]
+    this.perPage = lay.cols * lay.rows
+    const pages = Math.ceil(elements.length / this.perPage)
+    this.pageCount = pages
+    if (this.page < 0) this.page = 0
+    if (this.page >= pages) this.page = pages - 1
+    const start = this.page * this.perPage
+    const end = Math.min(start + this.perPage, elements.length)
+    const totalW = lay.cols * lay.w + (lay.cols - 1) * lay.gap
+    const left = Math.floor((432 - totalW) / 2)
+    const arr = []
+    for (let i = start; i < end; i++) {
+      const e = elements[i]
+      const k = i - start
+      const col = k % lay.cols
+      const row = Math.floor(k / lay.cols)
+      arr.push({
+        n: e.number,
+        no: e.number,
+        sym: e.symbol,
+        name: e.name,
+        x: left + col * (lay.w + lay.gap),
+        y: 34 + row * (lay.h + lay.gap),
+        w: lay.w,
+        h: lay.h,
+        ns: lay.ns,
+        ss: lay.ss,
+        nm: lay.nm,
+        nh: lay.ns + 3,
+        sh: lay.ss + 5,
+        nmh: lay.nm + 3,
+        info: lay.is ? (String(e.mass) + ' · ' + blockOf(e) + '区') : '',
+        is: lay.is,
+        ih: lay.is + 3,
+        cls: 'blk-' + blockOf(e),
+      })
+    }
+    this.cards = arr
+    this.cardsH = lay.rows * (lay.h + 8)
+    this.pageText = (start + 1) + '-' + end + ' / ' + elements.length
+  },
+
+  buildKeys() {
+    const arr = []
+    for (let r = 0; r < KEY_ROWS.length; r++) {
+      for (let c = 0; c < KEY_ROWS[r].length; c++) {
+        arr.push({ txt: KEY_ROWS[r][c], x: 18 + c * 66, y: 2 + r * 40 })
+      }
+    }
+    this.keys = arr
+  },
+
+  prevPage() {
+    appGlobal.tap()
+    if (this.page > 0) {
+      this.page--
+      this.buildCards()
+    }
+  },
+
+  nextPage() {
+    appGlobal.tap()
+    const pages = Math.ceil(elements.length / this.perPage)
+    if (this.page < pages - 1) {
+      this.page++
+      this.buildCards()
+    }
+  },
+
+  jumpPeriod(p) {
+    appGlobal.tap()
+    const start = PERIOD_START[p] || 0
+    this.page = Math.floor(start / this.perPage)
+    this.buildCards()
+  },
+
+  setMode(m) {
+    appGlobal.tap()
+    this.pickMode = false
+    this.mode = m
+    if (m === 'table') this.buildCards()
+  },
+
+  pick(n) {
+    appGlobal.tap()
+    for (let i = 0; i < elements.length; i++) {
+      if (elements[i].number === n) {
+        this.sel = elements[i]
+        this.selCls = 'd-' + (elements[i].cat || 'unknown')
+        this.selCat = CAT_NAMES[elements[i].cat] || CAT_NAMES.unknown
+        if (elements[i].cat === 'lanthanide') this.selPos = '镧系元素'
+        else if (elements[i].cat === 'actinide') this.selPos = '锕系元素'
+        else this.selPos = '第 ' + elements[i].period + ' 周期 · 第 ' + elements[i].group + ' 族'
+        if (this.pickMode) {
+          this.pickMode = false
+          this.mode = 'mass'
+          this.append(elements[i].symbol)
+        } else {
+          this.mode = 'detail'
+        }
+        return
+      }
+    }
+  },
+
+  openPicker() {
+    appGlobal.tap()
+    this.pickMode = true
+    this.mode = 'table'
+    this.buildCards()
+  },
+
+  append(t) {
+    if (this.formula.length + t.length > 32) {
+      this.mmErr = '化学式过长（最多 32 字符）'
+      return
+    }
+    this.formula += t
+    this.calcMM()
+  },
+
+  keyTap(t) {
+    appGlobal.tap()
+    this.append(t)
+  },
+
+  backspace() {
+    appGlobal.tap()
+    if (this.formula.length > 0) this.formula = this.formula.slice(0, this.formula.length - 1)
+    this.calcMM()
+  },
+
+  clearAll() {
+    appGlobal.tap()
+    this.formula = ''
+    this.mmMass = ''
+    this.mmBreak = ''
+    this.mmErr = ''
+  },
+
+  calcMM(showErr) {
+    if (!this.formula) {
+      this.mmMass = ''
+      this.mmBreak = ''
+      this.mmErr = ''
+      return
+    }
+    const r = molarMass(this.formula)
+    if (!r.ok) {
+      this.mmMass = ''
+      this.mmBreak = ''
+      this.mmErr = showErr ? r.err : ''
+      return
+    }
+    this.mmMass = fmtMass(r.mass)
+    this.mmBreak = countsText(r.counts, r.order)
+    this.mmErr = ''
+  },
+
+  back() {
+    appGlobal.tap()
+    if (this.pickMode) {
+      this.pickMode = false
+      this.mode = 'mass'
+      return
+    }
+    if (this.mode === 'detail') {
+      this.mode = 'table'
+      this.buildCards()
+      return
+    }
+    router.back()
+  },
+}
+</script>
+
+<style>
+  @import '../../common/style/base.css';
+
+  .chem { position: relative; width: 100%; height: 100%; padding: 0; overflow: hidden; background-color: #000000; }
+  .stage { position: relative; width: 432px; min-width: 432px; height: 514px; min-height: 514px; flex-shrink: 0; flex-direction: column; }
+  .hd { position: absolute; left: 0; top: 0; width: 432px; height: 40px; }
+  .back {
+    position: absolute; left: 10px; top: 2px; width: 64px; height: 36px;
+    line-height: 36px; font-size: 26px; color: #7aa7ff; text-align: center;
+  }
+  .title {
+    position: absolute; left: 100px; top: 4px; width: 232px; height: 34px;
+    line-height: 34px; font-size: 31px; font-weight: bold; color: #ffffff; text-align: center;
+  }
+  .tabs {
+    position: absolute; left: 24px; top: 42px; width: 384px; height: 34px; flex-direction: row;
+  }
+  .tab {
+    width: 184px; height: 34px; margin-left: 4px; margin-right: 4px;
+    border-radius: 17px; align-items: center; justify-content: center;
+  }
+  .tab-on { background-color: #2f6fed; }
+  .tab-off { background-color: #1c1c1e; }
+  .tab-t { font-size: 16px; color: #ffffff; text-align: center; }
+
+  .elist { position: relative; width: 432px; min-width: 432px; height: 438px; min-height: 438px; margin-top: 76px; flex-shrink: 0; flex-direction: column; }
+  .pchips { position: relative; width: 404px; min-width: 404px; height: 28px; min-height: 28px; margin-left: 14px; margin-top: 2px; flex-direction: row; align-items: center; flex-shrink: 0; }
+  .pclabel { width: 40px; height: 28px; line-height: 28px; font-size: 12px; color: #6b7078; }
+  .pchip {
+    width: 44px; height: 28px; min-width: 44px; min-height: 28px; flex-shrink: 0; margin-left: 2px; margin-right: 2px; border-radius: 14px;
+    background-color: #1c1c1e; align-items: center; justify-content: center;
+  }
+  .pchip-t { font-size: 14px; color: #d8d8d8; text-align: center; }
+
+  .ecards { width: 408px; min-width: 408px; margin-left: 12px; flex-direction: row; flex-wrap: wrap; align-content: flex-start; flex-shrink: 0; }
+  .ecard {
+    position: relative; margin: 4px; border-radius: 16px; flex-shrink: 0;
+    flex-direction: column; align-items: center; justify-content: center;
+  }
+  .e-num { width: 100%; color: #d8d8d8; text-align: center; }
+  .e-sym { width: 100%; color: #ffffff; text-align: center; font-weight: bold; }
+  .e-name { width: 100%; color: #ffffff; text-align: center; }
+  .e-info { width: 100%; color: #e8e8e8; text-align: center; }
+
+  /* 颜色规律：s 区暖棕、p 区绿、d 区蓝、f 区红 */
+  .blk-s { background-color: #5a4326; }
+  .blk-p { background-color: #234a32; }
+  .blk-d { background-color: #263d4d; }
+  .blk-f { background-color: #4d2838; }
+  .blk-unknown { background-color: #333333; }
+
+  .pager {
+    position: relative; width: 404px; min-width: 404px; height: 40px; min-height: 40px;
+    margin-left: 14px; flex-direction: row; align-items: center; flex-shrink: 0;
+  }
+  .pbtn {
+    width: 104px; height: 36px; min-width: 104px; min-height: 36px; flex-shrink: 0; border-radius: 18px; background-color: #1c1c1e;
+    align-items: center; justify-content: center;
+  }
+  .pbtn-t { font-size: 14px; color: #d8d8d8; text-align: center; }
+  .pinfo { flex: 1; height: 20px; line-height: 20px; font-size: 13px; color: #6b7078; text-align: center; }
+
+  .dscroll { position: absolute; left: 0; top: 44px; width: 432px; height: 470px; flex-direction: column; }
+  .dhead {
+    width: 404px; height: 132px; margin-left: 14px; margin-top: 8px;
+    border-radius: 22px; background-color: #141414; flex-direction: row; align-items: center;
+  }
+  .dsym { width: 122px; height: 120px; line-height: 120px; font-size: 72px; text-align: center; }
+  .dmeta { flex: 1; flex-direction: column; padding-right: 14px; }
+  .dname { width: 100%; height: 42px; line-height: 42px; font-size: 30px; color: #ffffff; }
+  .dnum { width: 100%; height: 24px; line-height: 24px; font-size: 15px; color: #8e8e93; }
+  .dcat { width: 100%; height: 24px; line-height: 24px; font-size: 15px; color: #8e8e93; }
+
+  .d-fs0 .dsym { font-size: 60px; }
+  .d-fs1 .dsym { font-size: 72px; }
+  .d-fs2 .dsym { font-size: 82px; }
+  .d-fs0 .dname { font-size: 26px; }
+  .d-fs1 .dname { font-size: 30px; }
+  .d-fs2 .dname { font-size: 34px; }
+  .d-fs0 .dnum, .d-fs0 .dcat { font-size: 13px; }
+  .d-fs1 .dnum, .d-fs1 .dcat { font-size: 15px; }
+  .d-fs2 .dnum, .d-fs2 .dcat { font-size: 17px; }
+  .d-fs0 .dil { font-size: 13px; }
+  .d-fs1 .dil { font-size: 15px; }
+  .d-fs2 .dil { font-size: 17px; }
+  .d-fs0 .div { font-size: 14px; }
+  .d-fs1 .div { font-size: 16px; }
+  .d-fs2 .div { font-size: 18px; }
+  .d-fs0 .dh { font-size: 16px; }
+  .d-fs1 .dh { font-size: 18px; }
+  .d-fs2 .dh { font-size: 20px; }
+  .d-fs0 .dprop { font-size: 17px; line-height: 26px; }
+  .d-fs1 .dprop { font-size: 19px; line-height: 29px; }
+  .d-fs2 .dprop { font-size: 22px; line-height: 33px; }
+  .d-fs0 .deq { font-size: 15px; line-height: 24px; }
+  .d-fs1 .deq { font-size: 17px; line-height: 26px; }
+  .d-fs2 .deq { font-size: 20px; line-height: 30px; }
+
+  .d-alkali { color: #ff8a80; }
+  .d-alkaline { color: #ffd180; }
+  .d-transition { color: #82b1ff; }
+  .d-post { color: #b0bec5; }
+  .d-metalloid { color: #a5d6a7; }
+  .d-nonmetal { color: #69f0ae; }
+  .d-halogen { color: #b388ff; }
+  .d-noble { color: #ea80fc; }
+  .d-lanthanide { color: #ffab91; }
+  .d-actinide { color: #f48fb1; }
+  .d-unknown { color: #cfd8dc; }
+
+  .dinfo {
+    width: 404px; margin-left: 14px; margin-top: 10px; border-radius: 18px;
+    background-color: #1c1c1e; flex-direction: column;
+  }
+  .di { width: 404px; height: 38px; flex-direction: row; align-items: center; padding-left: 16px; padding-right: 16px; }
+  .dil { width: 150px; height: 26px; line-height: 26px; font-size: 15px; color: #8e8e93; }
+  .div { flex: 1; height: 26px; line-height: 26px; font-size: 16px; color: #ffffff; text-align: right; }
+
+  .dh { width: 372px; height: 24px; line-height: 24px; margin-left: 20px; margin-top: 16px; font-size: 18px; color: #8e8e93; }
+  .dprop { width: 372px; margin-left: 20px; margin-top: 4px; font-size: 19px; line-height: 29px; color: #ffffff; }
+  .deq { width: 372px; margin-left: 20px; margin-top: 5px; font-size: 17px; line-height: 26px; color: #d8d8d8; }
+  .dbtn {
+    width: 200px; height: 44px; margin-left: 116px; margin-top: 16px; border-radius: 22px;
+    background-color: #2f6fed; align-items: center; justify-content: center;
+  }
+  .dbt { font-size: 17px; color: #ffffff; text-align: center; }
+  .dend { width: 432px; height: 20px; }
+
+  .mcard {
+    position: absolute; left: 12px; top: 82px; width: 408px; height: 86px;
+    background-color: #141414; border-radius: 22px;
+  }
+  .m-label {
+    position: absolute; left: 16px; top: 6px; width: 120px; height: 18px;
+    line-height: 18px; font-size: 12px; color: #8e8e93;
+  }
+  .m-formula {
+    position: absolute; left: 16px; top: 22px; width: 300px; height: 36px;
+    line-height: 36px; font-size: 22px; color: #6b7078;
+  }
+  .m-formula-on { color: #ffffff; }
+  .m-hint {
+    position: absolute; left: 16px; top: 63px; width: 300px; height: 16px;
+    line-height: 16px; font-size: 10px; color: #6b7078;
+  }
+  .pick {
+    position: absolute; left: 334px; top: 8px; width: 64px; height: 28px;
+    border-radius: 14px; background-color: #263d4d; align-items: center; justify-content: center;
+  }
+  .pick-t { font-size: 12px; color: #82b1ff; text-align: center; }
+
+  .mres {
+    position: absolute; left: 12px; top: 174px; width: 408px; height: 88px;
+    background-color: #101010; border-radius: 22px;
+  }
+  .m-mass {
+    position: absolute; left: 16px; top: 8px; width: 376px; height: 34px;
+    line-height: 34px; font-size: 24px; color: #69f0ae;
+  }
+  .m-break {
+    position: absolute; left: 16px; top: 44px; width: 376px; height: 20px;
+    line-height: 20px; font-size: 12px; color: #8e8e93;
+  }
+  .m-err {
+    position: absolute; left: 16px; top: 28px; width: 376px; height: 30px;
+    line-height: 30px; font-size: 14px; color: #ff8a65;
+  }
+  .m-empty {
+    position: absolute; left: 16px; top: 30px; width: 376px; height: 26px;
+    line-height: 26px; font-size: 13px; color: #6b7078;
+  }
+
+  .keys { position: relative; width: 432px; min-width: 432px; height: 246px; min-height: 246px; margin-top: 268px; flex-shrink: 0; flex-direction: column; }
+  .kgrid { width: 408px; min-width: 408px; height: 210px; min-height: 210px; margin-left: 12px; flex-direction: row; flex-wrap: wrap; align-content: flex-start; flex-shrink: 0; }
+  .ck {
+    position: relative; width: 62px; height: 36px; min-width: 62px; min-height: 36px; margin: 3px; flex-shrink: 0; border-radius: 10px;
+    background-color: #242424; align-items: center; justify-content: center;
+  }
+  .ck-t { font-size: 17px; color: #ffffff; text-align: center; width: 62px; min-width: 62px; height: 36px; min-height: 36px; line-height: 36px; }
+  .kacts { width: 408px; min-width: 408px; height: 36px; min-height: 36px; margin-left: 12px; flex-direction: row; align-items: center; justify-content: space-between; flex-shrink: 0; }
+  .act {
+    position: relative; width: 92px; height: 36px; min-width: 92px; min-height: 36px; margin: 0; flex-shrink: 0; border-radius: 10px;
+    background-color: #2f6fed; align-items: center; justify-content: center;
+  }
+  .act-dim { background-color: #333333; }
+  .act-calc { background-color: #2f7d33; }
+  .act-t { font-size: 16px; color: #ffffff; text-align: center; width: 92px; line-height: 36px; }
+
+  /* 字号设置也覆盖摩尔质量页 */
+  .fs0 .m-formula { font-size: 20px; }
+  .fs2 .m-formula { font-size: 26px; }
+  .fs0 .m-mass { font-size: 21px; }
+  .fs2 .m-mass { font-size: 28px; }
+  .fs0 .m-break, .fs0 .m-empty { font-size: 12px; }
+  .fs2 .m-break, .fs2 .m-empty { font-size: 14px; }
+  .fs0 .ck-t { font-size: 15px; }
+  .fs2 .ck-t { font-size: 20px; }
+  .fs0 .act-t { font-size: 14px; }
+  .fs2 .act-t { font-size: 18px; }
+  .fs2 .pick-t { font-size: 13px; }
+</style>

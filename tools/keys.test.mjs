@@ -71,15 +71,26 @@ test('√ 键（写作 sqrt）能用', () => {
   assert.ok(KEY_DESC['√'], '√ 没有说明')
 })
 
-test('说明里提到的上限与内核一致（阶乘 1000）', () => {
-  assert.ok(KEY_DESC['!'].indexOf('1000') > 0, KEY_DESC['!'])
-  assert.ok(evaluate('1000!').ok)
-  assert.ok(!evaluate('1001!').ok)
+test('说明里提到的上限与内核一致（阶乘 5000）', () => {
+  assert.ok(KEY_DESC['!'].indexOf('5000') > 0, KEY_DESC['!'])
+  assert.ok(evaluate('5000!').ok)
+  assert.ok(!evaluate('5001!').ok)
 })
 
 test('π 与 e 键说明里的数值对得上', () => {
   assert.ok(Math.abs(evaluate('π').value - Math.PI) < 1e-12)
   assert.ok(Math.abs(evaluate('e').value - Math.E) < 1e-12)
+})
+
+test('新键位：ⁿ√ / ↑ / , / | 的说明与内核一致', () => {
+  assert.ok(KEY_DESC['ⁿ√'] && KEY_DESC['ⁿ√'].indexOf('root') > 0, KEY_DESC['ⁿ√'])
+  assert.ok(KEY_DESC['↑'] && KEY_DESC['↑'].indexOf('1024') > 0, KEY_DESC['↑'])
+  assert.ok(KEY_DESC[','] && KEY_DESC[','].indexOf('root') > 0, KEY_DESC[','])
+  assert.ok(KEY_DESC['|'] && KEY_DESC['|'].indexOf('绝对值') >= 0, KEY_DESC['|'])
+  assert.ok(evaluate('root(8,3)').ok)
+  assert.ok(evaluate('2↑10').ok)
+  assert.ok(evaluate('2↑3').ok)
+  assert.ok(evaluate('|−3|').ok)
 })
 
 const failed = results.filter(r => !r.ok)

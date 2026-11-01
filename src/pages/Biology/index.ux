@@ -1,0 +1,143 @@
+<template>
+  <div class="page bio">
+    <div class="stage">
+    <div class="hd">
+      <text class="back" @click="back">‹</text>
+      <text class="title">{{mode=='detail' ? '生物知识点' : '生物'}}</text>
+    </div>
+
+    <scroll class="scroll fs{{fs}}" scroll-y if="{{mode=='list'}}">
+      <text class="intro">高中生物 · 6 个主题 · 点开读知识点</text>
+      <div class="brow" for="{{topics}}" tid="i" @click="openTopic($item.id)">
+        <div class="bmain">
+          <text class="bname">{{$item.name}}</text>
+          <text class="bsub">{{$item.sub}}</text>
+        </div>
+        <text class="bgo">›</text>
+      </div>
+      <div class="gap"></div>
+    </scroll>
+
+    <scroll class="dscroll fs{{fs}}" scroll-y if="{{mode=='detail'}}">
+      <text class="dtitle">{{cur.name}}</text>
+      <text class="dsub">{{cur.sub}}</text>
+      <div class="pt" for="{{points}}" tid="i">
+        <text class="pt-n">{{$item.n}}</text>
+        <text class="pt-t">{{$item.txt}}</text>
+      </div>
+      <div class="dbtn" @click="setMode('list')">
+        <text class="dbtn-t">‹ 返回主题</text>
+      </div>
+      <div class="gap"></div>
+    </scroll>
+    </div>
+  </div>
+</template>
+
+<script>
+import router from '@blueos.app.appmanager.router'
+import appGlobal from '../../common/core/app.js'
+import { bioTopics } from '../../common/data/biology.js'
+
+export default {
+  data: {
+    mode: 'list',
+    fs: 1,
+    topics: bioTopics,
+    cur: bioTopics[0],
+    points: [],
+  },
+
+  onShow() {
+    appGlobal.bind(this.$app)
+    this.fs = appGlobal.fsOn()
+  },
+
+  openTopic(id) {
+    appGlobal.tap()
+    for (let i = 0; i < bioTopics.length; i++) {
+      if (bioTopics[i].id === id) {
+        this.cur = bioTopics[i]
+        this.points = bioTopics[i].points.map(function (t, k) {
+          return { n: String(k + 1), txt: t }
+        })
+        this.mode = 'detail'
+        return
+      }
+    }
+  },
+
+  setMode(m) {
+    appGlobal.tap()
+    this.mode = m
+  },
+
+  back() {
+    appGlobal.tap()
+    if (this.mode === 'detail') {
+      this.mode = 'list'
+      return
+    }
+    router.back()
+  },
+}
+</script>
+
+<style>
+  @import '../../common/style/base.css';
+
+  .bio { position: relative; width: 100%; height: 100%; padding: 0; overflow: hidden; background-color: #000000; }
+  .stage { position: relative; width: 432px; min-width: 432px; height: 514px; min-height: 514px; flex-shrink: 0; flex-direction: column; }
+  .hd { position: absolute; left: 0; top: 0; width: 432px; height: 40px; }
+  .back {
+    position: absolute; left: 10px; top: 2px; width: 64px; height: 36px;
+    line-height: 36px; font-size: 26px; color: #7aa7ff; text-align: center;
+  }
+  .title {
+    position: absolute; left: 100px; top: 4px; width: 232px; height: 34px;
+    line-height: 34px; font-size: 31px; font-weight: bold; color: #ffffff; text-align: center;
+  }
+
+  .scroll { position: absolute; left: 0; top: 44px; width: 432px; height: 470px; flex-direction: column; }
+  .intro { width: 404px; height: 26px; line-height: 26px; margin-left: 14px; font-size: 11px; color: #8e8e93; }
+  .brow {
+    width: 404px; min-height: 78px; margin-left: 14px; margin-bottom: 10px;
+    padding: 14px 18px; border-radius: 20px; background-color: #1c1c1e;
+    flex-direction: row; align-items: center;
+  }
+  .bmain { flex: 1; flex-direction: column; }
+  .bname { width: 100%; font-size: 20px; color: #ffffff; }
+  .bsub { width: 100%; margin-top: 5px; font-size: 11px; line-height: 17px; color: #8e8e93; }
+  .bgo { width: 24px; font-size: 22px; color: #48484a; text-align: center; }
+
+  .dscroll { position: absolute; left: 0; top: 44px; width: 432px; height: 470px; flex-direction: column; }
+  .dtitle { width: 404px; margin-left: 14px; margin-top: 8px; font-size: 25px; line-height: 34px; color: #ffffff; }
+  .dsub { width: 404px; margin-left: 14px; margin-top: 4px; font-size: 12px; line-height: 19px; color: #8e8e93; }
+  .pt {
+    width: 404px; margin-left: 14px; margin-top: 9px; padding: 10px 14px;
+    border-radius: 14px; background-color: #141414; flex-direction: row; align-items: flex-start;
+  }
+  .pt-n {
+    width: 24px; height: 22px; line-height: 22px; font-size: 13px; color: #54cc58;
+  }
+  .pt-t {
+    flex: 1; font-size: 15px; line-height: 23px; color: #e8e8e8;
+  }
+  .dbtn {
+    width: 200px; height: 42px; margin-left: 116px; margin-top: 16px; border-radius: 21px;
+    background-color: #2f6fed; align-items: center; justify-content: center;
+  }
+  .dbtn-t { font-size: 16px; color: #ffffff; text-align: center; }
+  .gap { width: 100%; height: 20px; }
+
+  .fs0 .bname { font-size: 18px; }
+  .fs2 .bname { font-size: 23px; }
+  .fs0 .bsub { font-size: 10px; line-height: 16px; }
+  .fs2 .bsub { font-size: 13px; line-height: 19px; }
+  .fs0 .dtitle { font-size: 22px; }
+  .fs2 .dtitle { font-size: 28px; }
+  .fs0 .dsub { font-size: 11px; }
+  .fs2 .dsub { font-size: 14px; }
+  .fs0 .pt-t { font-size: 13px; line-height: 20px; }
+  .fs2 .pt-t { font-size: 18px; line-height: 27px; }
+</style>

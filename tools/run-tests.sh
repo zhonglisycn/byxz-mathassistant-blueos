@@ -11,8 +11,9 @@ for t in $TESTS; do
   name=$(basename "$t" .test.mjs)
   TMP=".ct-$name"
   rm -rf "$TMP" 2>/dev/null || true
-  mkdir -p "$TMP/core/content"
+  mkdir -p "$TMP/core/content" "$TMP/data"
   printf '{ "type": "module" }' > "$TMP/package.json"
+  cp src/common/data/*.js "$TMP/data/" 2>/dev/null || true
   for f in src/common/core/*.js; do
     b=$(basename "$f")
     [ "$b" = "util.js" ] && continue
@@ -24,6 +25,14 @@ const mem = {}
 export function saveKey(key, value, cb) { mem[key] = value; if (cb) cb(true) }
 export function loadKey(key, cb) { cb(mem[key] !== undefined, mem[key]) }
 export function dropKey(key, cb) { delete mem[key]; if (cb) cb(true) }
+STUB
+  # 假 vibrator：app.test 用它断言"关掉震动后 tap() 一次都不调用"
+  cat > "$TMP/core/vib-backend.js" <<'STUB'
+const state = { count: 0 }
+export function vibrate() { state.count++ }
+export function count() { return state.count }
+export function reset() { state.count = 0 }
+export default { vibrate, count, reset }
 STUB
   cp "$t" "$TMP/"
   echo ""

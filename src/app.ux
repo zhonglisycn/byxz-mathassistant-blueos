@@ -3,7 +3,9 @@
 
   export default {
     onCreate() {
-      appGlobal.init()
+      // 建跨页共享宿主（$app.$def.maShared）并读一次存档。
+      // 默认值会在 init 里显式发布，首装不会读到"无值"。
+      appGlobal.init(this)
     },
   }
 </script>

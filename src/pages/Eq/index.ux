@@ -50,7 +50,7 @@
 
       <div class="result" if="{{solved}}">
         <text class="t-sub" style="font-size: 23px; width: 100%">{{general}}</text>
-        <text class="t-ok" style="font-size: 34px; width: 100%; margin-top: 7px">{{answer}}</text>
+        <text class="t-line {{$item.cls}}" for="{{lines}}" tid="i">{{$item.text}}</text>
       </div>
       <div if="{{solved}}">
         <text class="t-step" style="font-size: 25px" for="{{steps}}" tid="i">{{$item}}</text>
@@ -94,10 +94,26 @@
         <div class="key" @click="tap('e')"><text class="t-key" style="color: #ffffff">e</text></div>
       </div>
       <div class="prow">
+        <div class="key" @click="tap('%')"><text class="t-key" style="color: #f7b336">%</text></div>
+        <div class="key" @click="tap('!')"><text class="t-key" style="color: #f7b336">!</text></div>
+        <div class="key" @click="tap('abs')"><text class="t-key-sm" style="color: #32a3ff">abs</text></div>
+        <div class="key" @click="tap('tan')"><text class="t-key-sm" style="color: #32a3ff">tan</text></div>
+      </div>
+      <div class="prow">
         <div class="key" @click="tap('√')"><text class="t-key" style="color: #ffffff">√</text></div>
         <div class="key" @click="tap('sin')"><text class="t-key-sm" style="color: #32a3ff">sin</text></div>
         <div class="key" @click="tap('ln')"><text class="t-key-md" style="color: #32a3ff">ln</text></div>
         <div class="key" @click="tap('log')"><text class="t-key-sm" style="color: #32a3ff">log</text></div>
+      </div>
+      <div class="prow">
+        <div class="key" @click="tap('ⁿ√')"><text class="t-key-md" style="color: #32a3ff">ⁿ√</text></div>
+        <div class="key" @click="tap(',')"><text class="t-key" style="color: #32a3ff">,</text></div>
+        <div class="key" @click="tap('↑')"><text class="t-key" style="color: #f7b336">↑</text></div>
+      </div>
+      <div class="prow">
+        <div class="key" @click="tap('|')"><text class="t-key" style="color: #32a3ff">|</text></div>
+        <div class="key" @click="tap('x²')"><text class="t-key-md" style="color: #32a3ff">x²</text></div>
+        <div class="key" @click="tap('x³')"><text class="t-key-md" style="color: #32a3ff">x³</text></div>
       </div>
       </div>
       <div class="pad" if="{{!solved && !free}}">
@@ -141,15 +157,17 @@
 <script>
 import router from '@blueos.app.appmanager.router'
 import appGlobal from '../../common/core/app.js'
-import { solveLinear, solveQuadratic, solveSystem2, solveNumeric, solveEquation } from '../../common/core/solver.js'
-import { formatExact, formatNumber } from '../../common/core/calc.js'
+import { solveLinear, solveQuadratic, solveSystem2, solveNumeric, solveEquation, rootLines, makeLines, strictExact } from '../../common/core/solver.js'
+import { evaluate, displayResult } from '../../common/core/calc.js'
+import { formatNumber } from '../../common/core/calc.js'
 import { descOf } from '../../common/core/keys.js'
+import { LIMITS, fits, clipCursor, clipText } from '../../common/core/limits.js'
 
 const MODES = [
-  { k: 'free', name: '自由式子', hint: '直接写 2x+3=7、x²−3x=−2，会自动化为一般式' },
+  { k: 'free', name: '自由式子', hint: '写 2x+3=7；没有 x 时按四则/函数直接算' },
   { k: 'line', name: '一次方程', hint: 'a·x + b = 0' },
   { k: 'quad', name: '二次方程', hint: 'a·x² + b·x + c = 0，含复根与顶点' },
-  { k: 'sys', name: '二元一次方程组', hint: 'a₁x + b₁y = c₁ ； a₂x + b₂y = c₂' },
+  { k: 'sys', name: '二元一次方程组', hint: 'a1x + b1y = c1 ； a2x + b2y = c2' },
   { k: 'any', name: '数值求根', hint: 'f(x) = 0，在 −20 ~ 20 之间找实根' }
 ]
 
@@ -165,7 +183,7 @@ const FIELDS = {
 const FORMS = {
   line: 'a·x + b = 0',
   quad: 'a·x² + b·x + c = 0',
-  sys: 'a₁x + b₁y = c₁ ； a₂x + b₂y = c₂'
+  sys: 'a1x + b1y = c1 ； a2x + b2y = c2'
 }
 
 // 系数模式只需要数字与负号；自由式子还要运算符与函数
@@ -177,7 +195,10 @@ const KEYS_FREE = [
   '0', '.', '−', '+',
   '=', '(', ')', '^',
   '×', '÷', 'π', 'e',
-  '√', 'sin', 'ln', 'log'
+  '%', '!', 'abs', 'tan',
+  '√', 'sin', 'ln', 'log',
+  'ⁿ√', ',', '↑',
+  '|', 'x²', 'x³'
 ]
 
 function buildKeys(free) {
@@ -189,16 +210,21 @@ function buildKeys(free) {
     let color = '#ffffff', cls = 't-key'
     if (k === '←') cls = 't-icon'
     else if (k === 'C') color = '#ff6b6b'
-    else if ('−+×÷^'.indexOf(k) >= 0) color = '#f7b336'
-    else if (k === '=' || k === 'x' || k === '(' || k === ')') color = '#32a3ff'
+    else if ('−+×÷^↑'.indexOf(k) >= 0) color = '#f7b336'
+    else if (k === '=' || k === 'x' || k === '(' || k === ')' || k === '|' || k === ',') color = '#32a3ff'
     else if (k === 'π' || k === 'e') color = '#e34afe'
+    else if (k === 'ⁿ√' || k === '√' || k === 'x²' || k === 'x³') { color = '#32a3ff'; cls = 't-key-md' }
     else if (k.length >= 2) { color = '#32a3ff'; cls = 't-key-sm' }   // sin/ln/log/√
     out.push({ k: k, label: k, cls: cls, color: color })
   }
   return out
 }
 
-const APPEND = { '×': '*', '÷': '/', '−': '-', '√': 'sqrt(' }
+const APPEND = {
+  '×': '*', '÷': '/', '−': '-', '√': 'sqrt(', 'ⁿ√': 'root(', ',': ',', '|': '|',
+  '↑': '↑', 'x²': '^2', 'x³': '^3',
+  'abs': 'abs(', 'tan': 'tan('
+}
 
 export default {
   data: {
@@ -219,13 +245,21 @@ export default {
     solved: false,
     general: '',
     answer: '',
+    lines: [],
+    exactFirst: false,
     steps: []
   },
 
 
-  onInit() { this.picking = true },
+  onInit() {
+    this.picking = true
+    appGlobal.bind(this.$app)
+  },
 
-  onShow() {},
+  onShow() {
+    // 设置页可能刚改过精确/小数开关
+    appGlobal.bind(this.$app)
+  },
 
   setMode(k) {
     appGlobal.tap()
@@ -262,14 +296,15 @@ export default {
 
   syncChips() {
     this.fields = this.fields.map(f => ({
-      k: f.k, on: f.k === this.curKey,
-      text: f.k + ' = ' + (f.k === this.curKey ? (f.val || '_') : f.val)
+      k: f.k, val: f.val, on: f.k === this.curKey,
+      text: f.k + ' = ' + clipText(f.k === this.curKey ? (f.val || '_') : f.val, 20)
     }))
   },
 
   refresh() {
     if (!this.free) return
-    this.shown = (this.text.slice(0, this.cur) + '|' + this.text.slice(this.cur)) || '|'
+    // 显示层截断；内部 this.text 保留完整 256 字符
+    this.shown = clipCursor(this.text, this.cur, LIMITS.eqShow) || '|'
   },
 
   curField() {
@@ -288,7 +323,7 @@ export default {
       if (k === 'C') f.val = ''
       else if (k === '←') f.val = f.val.slice(0, -1)
       else if (k === '−') f.val = f.val.charAt(0) === '-' ? f.val.slice(1) : '-' + f.val
-      else if (f.val.length < 24) f.val += k
+      else if (fits('coef', f.val.length, k.length)) f.val += k
       this.syncChips()
       return
     }
@@ -302,62 +337,69 @@ export default {
       return
     }
     const add = APPEND[k] || k
-    if (this.text.length < 48) {
+    if (fits('freeEq', this.text.length, add.length)) {
       this.text = this.text.slice(0, this.cur) + add + this.text.slice(this.cur)
       this.cur += add.length
     }
     this.refresh()
   },
 
-  one(v, exact) {
-    if (exact) {
-      const e = formatExact(v)
-      if (e !== null) return e
-    }
-    return formatNumber(v)
+  /** 单行结果（错误/恒等式/无解这类，不涉及精确+小数两行） */
+  setSingle(text) {
+    this.lines = [{ text: text, on: true }]
   },
 
-  rootText(roots, exact) {
-    const out = []
-    for (let i = 0; i < roots.length; i++) {
-      const r = roots[i]
-      const tag = 'x' + (roots.length > 1 ? (i + 1) : '')
-      if (Math.abs(r.im) < 1e-12) out.push(tag + ' = ' + this.one(r.re, exact))
-      else {
-        const im = Math.abs(r.im)
-        const imTxt = (Math.abs(im - 1) < 1e-12 ? '' : this.one(im, exact)) + 'i'
-        out.push(tag + ' = ' + this.one(r.re, exact) + (r.im > 0 ? ' + ' : ' − ') + imTxt)
-      }
-    }
-    return out.join('，')
+  /** 一组根 → 精确/小数两行（两行始终都在，开关只决定先后与加粗） */
+  setRoots(roots) {
+    const res = rootLines(roots, this.exactFirst)
+    this.lines = res.lines
   },
 
   solve() {
     const app = appGlobal
-    const exact = !!app.exact
+    app.bind(this.$app)
+    this.exactFirst = app.exactOn()
     let general = ''
-    let answer = ''
     let steps = []
+    let done = false
 
     if (this.mode === 'free') {
+      // 自由式子没有 x、也没有等号时，按普通四则/函数算式求值；
+      // 否则 solveEquation 会要求等号，用户会以为"自由式不能算四则"。
+      if (this.text.indexOf('x') < 0 && this.text.indexOf('=') < 0) {
+        const cr = evaluate(this.text, { deg: appGlobal.degOn() })
+        if (!cr.ok) this.setSingle(cr.err)
+        else {
+          general = '四则计算'
+          this.setSingle('= ' + displayResult(cr, this.exactFirst, appGlobal.fullOn()))
+          steps = ['按括号、乘除、加减的顺序计算']
+        }
+        done = true
+        this.general = clipText(general, LIMITS.eqShow)
+        this.answer = this.lines.length ? this.lines[0].text : ''
+        this.steps = (steps && steps.length) ? steps : ['没有更多步骤']
+        this.solved = true
+        return
+      }
       const r = solveEquation(this.text, {})
-      if (!r.ok) answer = r.err
+      if (!r.ok) this.setSingle(r.err)
       else {
         general = r.general
-        if (r.any) answer = '任意 x 都成立'
-        else if (r.none) answer = '无解'
-        else answer = r.roots.length ? this.rootText(r.roots, exact) : '没有实根'
+        if (r.any) this.setSingle('任意 x 都成立')
+        else if (r.none) this.setSingle('无解')
+        else if (!r.roots.length) this.setSingle('没有实根')
+        else this.setRoots(r.roots)
         steps = r.steps
       }
+      done = true
     } else if (this.mode === 'any') {
-      const r = solveNumeric(this.text, { xmin: -20, xmax: 20, steps: 800 })
+      const r = solveNumeric(this.text, { xmin: -20, xmax: 20, steps: 1600 })
       general = 'f(x) = 0'
-      if (!r.ok) answer = r.err
-      else if (!r.roots.length) { answer = '这段区间里没有实根'; steps = r.steps }
-      else {
-        answer = this.rootText(r.roots.map(v => ({ re: v, im: 0 })), exact)
-        steps = r.steps
-      }
+      if (!r.ok) this.setSingle(r.err)
+      else if (!r.roots.length) this.setSingle('这段区间里没有实根')
+      else this.setRoots(r.roots.map(v => ({ re: v, im: 0 })))
+      steps = r.steps
+      done = true
     } else {
       const v = {}
       for (let i = 0; i < this.fields.length; i++) v[this.fields[i].k] = this.fields[i].val
@@ -369,23 +411,33 @@ export default {
       general = FORMS[this.mode] || ''
       if (this.mode === 'line') {
         const r = solveLinear(num(v.a), num(v.b))
-        answer = r.ok ? (r.any ? '任意 x 都成立' : this.rootText(r.roots.map(x => ({ re: x, im: 0 })), exact)) : r.err
+        if (!r.ok) this.setSingle(r.err)
+        else if (r.any) this.setSingle('任意 x 都成立')
+        else this.setRoots(r.roots.map(x => ({ re: x, im: 0 })))
         steps = r.steps
       } else if (this.mode === 'quad') {
         const r = solveQuadratic(num(v.a), num(v.b), num(v.c))
-        answer = r.ok ? this.rootText(r.roots, exact) : r.err
+        if (!r.ok) this.setSingle(r.err)
+        else this.setRoots(r.roots)
         steps = r.steps || []
       } else {
         const r = solveSystem2(num(v.a1), num(v.b1), num(v.c1), num(v.a2), num(v.b2), num(v.c2))
-        if (r.any) answer = '无穷多组解（两直线重合）'
-        else if (r.none) answer = '无解（两直线平行）'
-        else answer = 'x = ' + this.one(r.x, exact) + '，y = ' + this.one(r.y, exact)
+        if (r.any) this.setSingle('无穷多组解（两直线重合）')
+        else if (r.none) this.setSingle('无解（两直线平行）')
+        else {
+          const ex = strictExact(r.x), ey = strictExact(r.y)
+          const exText = (ex !== null && ey !== null) ? ('x = ' + ex + '，y = ' + ey) : null
+          const flText = 'x = ' + formatNumber(r.x) + '，y = ' + formatNumber(r.y)
+          this.lines = makeLines(exText, flText, this.exactFirst).lines
+        }
         steps = r.steps
       }
+      done = true
     }
+    if (!done) this.setSingle('没有结果')
 
-    this.general = general
-    this.answer = answer
+    this.general = clipText(general, LIMITS.eqShow)
+    this.answer = this.lines.length ? this.lines[0].text : ''
     this.steps = (steps && steps.length) ? steps : ['没有更多步骤']
     this.solved = true
   },
@@ -434,6 +486,12 @@ export default {
   .t-chip { font-size: 27px; }
 
   .t-step { color: #b9bec6; width: 100%; margin-top: 5px; }
+
+  /* 结果双行：开关决定哪行加粗/绿色，另一行灰色；两行都在 */
+  .t-line { width: 100%; margin-top: 7px; font-size: 34px; }
+  .t-line-sm { font-size: 25px; }
+  .t-line-on { color: #54cc58; font-weight: bold; }
+  .t-line-off { color: #b9bec6; }
 
   .t-help { color: #8b8f96; width: 100%; }
   .gap { width: 100%; height: 22px; }

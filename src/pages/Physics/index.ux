@@ -1,0 +1,328 @@
+<template>
+  <div class="page phys">
+    <div class="stage">
+    <div class="hd">
+      <text class="back" @click="back">‹</text>
+      <text class="title">{{mode=='list' ? '物理' : curName}}</text>
+    </div>
+
+    <!-- 公式列表 -->
+    <scroll class="scroll fs{{fs}}" scroll-y if="{{mode=='list'}}">
+      <text class="intro">常用公式 · 点一项，填数值算结果</text>
+      <div class="fitem" @click="goCircuit">
+        <div class="fmain">
+          <text class="fname">电路图</text>
+          <text class="fexpr">自定义连接 · 串联/并联 · 转实物图</text>
+        </div>
+        <text class="fgo">›</text>
+      </div>
+      <div class="fitem" for="{{list}}" tid="i" @click="openFormula($item.id)">
+        <div class="fmain">
+          <text class="fname">{{$item.name}}</text>
+          <text class="fexpr">{{$item.expr}}</text>
+        </div>
+        <text class="fgo">›</text>
+      </div>
+      <div class="foot">11 个常用公式 · 常量 g=9.8，R=8.314</div>
+      <div class="gap"></div>
+    </scroll>
+
+    <!-- 计算 -->
+    <div class="calc fs{{fs}}" if="{{mode=='calc'}}">
+      <div class="fcard">
+        <text class="fcard-t">{{curExpr}}</text>
+      </div>
+
+      <div class="field {{$item.on}}" for="{{fieldRows}}" tid="i" @click="pickField($item.k)">
+        <text class="flabel">{{$item.label}}</text>
+        <text class="fval">{{$item.val}}</text>
+        <text class="funit">{{$item.unit}}</text>
+      </div>
+
+      <div class="res">
+        <text class="rline" for="{{resRows}}" tid="i">{{$item.label}} = {{$item.val}} {{$item.unit}}</text>
+        <text class="rerr" if="{{resErr}}">{{resErr}}</text>
+        <text class="rhint" if="{{!resRows.length && !resErr}}">点上面的数值行，用键盘输入后按 =</text>
+      </div>
+
+      <div class="kgrid">
+        <div class="key" for="{{keys}}" tid="i" @click="keyTap($item.txt)">
+          <text class="key-t {{$item.cls}}">{{$item.txt}}</text>
+        </div>
+      </div>
+
+      <text class="tip">e 科学计数 · 负 变号 · 删 退格</text>
+    </div>
+    </div>
+  </div>
+</template>
+
+<script>
+import router from '@blueos.app.appmanager.router'
+import appGlobal from '../../common/core/app.js'
+import { formulas, formulaById, computePhysics, fmtPhys } from '../../common/core/phys.js'
+
+const KEY_ROWS = [
+  ['7', '8', '9', '删'],
+  ['4', '5', '6', 'C'],
+  ['1', '2', '3', '负'],
+  ['.', '0', 'e', '='],
+]
+
+export default {
+  data: {
+    mode: 'list',
+    fs: 1,
+    list: [],
+    curId: '',
+    curName: '',
+    curExpr: '',
+    fields: [],
+    activeKey: '',
+    fieldRows: [],
+    vals: {},
+    resRows: [],
+    resErr: '',
+    keys: [],
+  },
+
+  onShow() {
+    appGlobal.bind(this.$app)
+    this.fs = appGlobal.fsOn()
+    if (!this.list.length) {
+      const arr = []
+      for (let i = 0; i < formulas.length; i++) {
+        arr.push({ id: formulas[i].id, name: formulas[i].name, expr: formulas[i].expr })
+      }
+      this.list = arr
+    }
+    if (!this.keys.length) this.buildKeys()
+  },
+
+  buildKeys() {
+    const arr = []
+    for (let r = 0; r < KEY_ROWS.length; r++) {
+      for (let c = 0; c < KEY_ROWS[r].length; c++) {
+        const t = KEY_ROWS[r][c]
+        let cls = ''
+        if (t === '=') cls = 'k-eq'
+        else if (t === 'C' || t === '删' || t === '负') cls = 'k-fn'
+        else if (t === 'e' || t === '.') cls = 'k-fn'
+        arr.push({ txt: t, x: 68 + c * 74, y: 266 + r * 42, cls: cls })
+      }
+    }
+    this.keys = arr
+  },
+
+  openFormula(id) {
+    appGlobal.tap()
+    const def = formulaById(id)
+    if (!def) return
+    this.curId = def.id
+    this.curName = def.name
+    this.curExpr = def.expr
+    const fs = []
+    const vals = {}
+    for (let i = 0; i < def.fields.length; i++) {
+      fs.push({ k: def.fields[i].k, label: def.fields[i].label, unit: def.fields[i].unit })
+      vals[def.fields[i].k] = String(def.fields[i].def)
+    }
+    this.fields = fs
+    this.vals = vals
+    this.activeKey = fs.length ? fs[0].k : ''
+    this.resRows = []
+    this.resErr = ''
+    this.mode = 'calc'
+    this.refreshFields()
+  },
+
+  refreshFields() {
+    const rows = []
+    for (let i = 0; i < this.fields.length; i++) {
+      const f = this.fields[i]
+      const on = f.k === this.activeKey ? 'field-on' : ''
+      const v = this.vals[f.k]
+      rows.push({
+        k: f.k,
+        label: f.label,
+        unit: f.unit,
+        val: v === undefined || v === null ? '' : String(v),
+        on: on,
+        y: 56 + i * 46,
+      })
+    }
+    this.fieldRows = rows
+  },
+
+  pickField(k) {
+    appGlobal.tap()
+    this.activeKey = k
+    this.refreshFields()
+  },
+
+  keyTap(t) {
+    appGlobal.tap()
+    if (t === '=') {
+      this.compute()
+      return
+    }
+    if (!this.activeKey) return
+    let v = this.vals[this.activeKey]
+    v = v === undefined || v === null ? '' : String(v)
+
+    if (t === 'C') {
+      v = ''
+    } else if (t === '删') {
+      v = v.slice(0, Math.max(0, v.length - 1))
+    } else if (t === '负') {
+      if (v.charAt(0) === '-') v = v.slice(1)
+      else v = '-' + v
+    } else {
+      if (v.length >= 16) return
+      if (t === '.') {
+        if (v.indexOf('.') >= 0 || v.indexOf('e') >= 0) return
+      } else if (t === 'e') {
+        if (!v || v.indexOf('e') >= 0) return
+      }
+      v += t
+    }
+    this.vals[this.activeKey] = v
+    this.resRows = []
+    this.resErr = ''
+    this.refreshFields()
+  },
+
+  compute() {
+    const r = computePhysics(this.curId, this.vals)
+    if (!r.ok) {
+      this.resRows = []
+      this.resErr = r.err
+      return
+    }
+    const rows = []
+    for (let i = 0; i < r.rows.length; i++) {
+      rows.push({
+        label: r.rows[i].label,
+        val: fmtPhys(r.rows[i].value),
+        unit: r.rows[i].unit,
+      })
+    }
+    this.resRows = rows
+    this.resErr = ''
+  },
+
+  goCircuit() {
+    appGlobal.tap()
+    router.push({ uri: 'pages/Circuit' })
+  },
+
+  back() {
+    appGlobal.tap()
+    if (this.mode === 'calc') {
+      this.mode = 'list'
+      return
+    }
+    router.back()
+  },
+}
+</script>
+
+<style>
+  @import '../../common/style/base.css';
+
+  .phys { position: relative; width: 100%; height: 100%; padding: 0; overflow: hidden; background-color: #000000; }
+  .stage { position: relative; width: 432px; min-width: 432px; height: 514px; min-height: 514px; flex-shrink: 0; flex-direction: column; }
+  .hd { position: absolute; left: 0; top: 0; width: 432px; height: 40px; }
+  .back {
+    position: absolute; left: 10px; top: 2px; width: 64px; height: 36px;
+    line-height: 36px; font-size: 26px; color: #7aa7ff; text-align: center;
+  }
+  .title {
+    position: absolute; left: 84px; top: 4px; width: 264px; height: 34px;
+    line-height: 34px; font-size: 31px; font-weight: bold; color: #ffffff; text-align: center;
+  }
+
+  .scroll { position: absolute; left: 0; top: 42px; width: 432px; height: 462px; flex-direction: column; }
+  .intro {
+    width: 404px; height: 26px; line-height: 26px; margin-left: 14px;
+    font-size: 11px; color: #8e8e93;
+  }
+  .fitem {
+    width: 404px; height: 66px; margin-left: 14px; margin-bottom: 10px;
+    padding-left: 18px; padding-right: 16px; border-radius: 18px;
+    background-color: #1c1c1e; flex-direction: row; align-items: center;
+  }
+  .fmain { flex: 1; flex-direction: column; }
+  .fname { width: 100%; height: 28px; line-height: 28px; font-size: 18px; color: #ffffff; }
+  .fexpr { width: 100%; height: 22px; line-height: 22px; font-size: 12px; color: #8e8e93; }
+  .fgo { width: 24px; height: 30px; line-height: 30px; font-size: 22px; color: #48484a; }
+  .foot {
+    width: 404px; height: 22px; line-height: 22px; margin-left: 14px; margin-top: 4px;
+    font-size: 10px; color: #6b7078;
+  }
+  .gap { width: 432px; height: 12px; }
+
+  .calc { position: relative; width: 432px; min-width: 432px; height: 474px; min-height: 474px; margin-top: 40px; flex-shrink: 0; flex-direction: column; }
+  .fcard {
+    position: relative; width: 404px; min-width: 404px; height: 44px; min-height: 44px;
+    margin-left: 14px; margin-top: 4px; flex-shrink: 0;
+    border-radius: 16px; background-color: #141414; align-items: center; justify-content: center;
+  }
+  .fcard-t { width: 380px; height: 30px; line-height: 30px; font-size: 13px; color: #d8d8d8; text-align: center; }
+
+  .field {
+    position: relative; width: 404px; min-width: 404px; height: 42px; min-height: 42px;
+    margin-left: 14px; margin-top: 4px; flex-shrink: 0; border-radius: 14px;
+    background-color: #1c1c1e; flex-direction: row; align-items: center; padding-left: 14px; padding-right: 14px;
+  }
+  .field-on { background-color: #263d4d; }
+  .flabel { width: 150px; height: 30px; line-height: 30px; font-size: 14px; color: #d8d8d8; }
+  .fval { flex: 1; height: 30px; line-height: 30px; font-size: 20px; color: #ffffff; text-align: right; }
+  .funit { width: 70px; height: 30px; line-height: 30px; font-size: 11px; color: #8e8e93; text-align: right; }
+
+  .res {
+    position: relative; width: 404px; min-width: 404px; height: 58px; min-height: 58px;
+    margin-left: 14px; margin-top: 8px; flex-shrink: 0; border-radius: 16px; background-color: #101010;
+  }
+  .rline { width: 380px; height: 26px; line-height: 26px; margin-left: 14px; font-size: 17px; color: #69f0ae; }
+  .rerr { width: 380px; height: 26px; line-height: 26px; margin-left: 14px; font-size: 14px; color: #ff8a65; }
+  .rhint { width: 380px; height: 26px; line-height: 26px; margin-left: 14px; font-size: 11px; color: #6b7078; }
+
+  .kgrid { width: 304px; min-width: 304px; margin-left: 64px; margin-top: 8px; flex-direction: row; flex-wrap: wrap; align-content: flex-start; flex-shrink: 0; }
+  .key {
+    position: relative; width: 70px; min-width: 70px; height: 38px; min-height: 38px; margin: 3px; flex-shrink: 0;
+    border-radius: 10px; background-color: #242424; align-items: center; justify-content: center;
+  }
+  .key-t { width: 70px; height: 38px; line-height: 38px; font-size: 21px; color: #ffffff; text-align: center; }
+  .k-eq { color: #54cc58; }
+  .k-fn { color: #32a3ff; }
+  .tip {
+    width: 404px; min-width: 404px; height: 20px; min-height: 20px; margin-left: 14px; margin-top: 4px;
+    line-height: 20px; font-size: 10px; color: #6b7078; text-align: center; flex-shrink: 0;
+  }
+
+  /* 字号设置：只放大内容，不改变固定布局的行高/键位 */
+  .fs0 .title { font-size: 28px; }
+  .fs1 .title { font-size: 31px; }
+  .fs2 .title { font-size: 34px; }
+  .fs0 .fname { font-size: 16px; }
+  .fs2 .fname { font-size: 21px; }
+  .fs0 .fexpr { font-size: 11px; }
+  .fs2 .fexpr { font-size: 14px; }
+  .fs0 .fcard-t { font-size: 12px; }
+  .fs2 .fcard-t { font-size: 15px; }
+  .fs0 .flabel { font-size: 13px; }
+  .fs2 .flabel { font-size: 17px; }
+  .fs0 .fval { font-size: 18px; }
+  .fs2 .fval { font-size: 26px; }
+  .fs0 .funit { font-size: 10px; }
+  .fs2 .funit { font-size: 13px; }
+  .fs0 .rline { font-size: 15px; }
+  .fs2 .rline { font-size: 21px; }
+  .fs0 .rhint { font-size: 10px; }
+  .fs2 .rhint { font-size: 13px; }
+  .fs0 .key-t { font-size: 19px; }
+  .fs2 .key-t { font-size: 26px; }
+  .fs0 .tip { font-size: 9px; }
+  .fs2 .tip { font-size: 12px; }
+</style>

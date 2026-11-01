@@ -3,7 +3,7 @@
     <scroll class="scroll" scroll-y>
 
     <div class="toptitle">
-      <text class="t-title" style="font-size: 32px">数学助手</text>
+      <text class="t-title" style="font-size: 32px">理科助手</text>
 
 
     </div>
@@ -16,7 +16,7 @@
 
     </div>
 
-      <text class="sec" style="font-size: 23px">工具</text>
+      <text class="sec" style="font-size: 23px">数学</text>
 
       <div class="row" @click="goCalc">
         <div class="row-main">
@@ -42,20 +42,43 @@
         <text class="row-go t-icon">›</text>
       </div>
 
+      <text class="sec" style="font-size: 23px">理科 · 物理 / 化学 / 生物</text>
+
+      <div class="row" @click="goPhys">
+        <div class="row-main">
+          <text class="row-title" style="font-size: 31px">物理</text>
+          <text class="row-sub" style="font-size: 23px">常用公式 · 电路图 · 代入计算</text>
+        </div>
+        <text class="row-go t-icon">›</text>
+      </div>
+
+      <div class="row" @click="goChem">
+        <div class="row-main">
+          <text class="row-title" style="font-size: 31px">化学</text>
+          <text class="row-sub" style="font-size: 23px">118 元素 · 分页卡片 · 摩尔质量</text>
+        </div>
+        <text class="row-go t-icon">›</text>
+      </div>
+
+      <div class="row" @click="goBio">
+        <div class="row-main">
+          <text class="row-title" style="font-size: 31px">生物</text>
+          <text class="row-sub" style="font-size: 23px">高中知识 · 细胞 · 遗传 · 生态</text>
+        </div>
+        <text class="row-go t-icon">›</text>
+      </div>
+
       <text class="sec" style="font-size: 23px">当前设置</text>
 
       <div class="row" @click="goAbout">
         <div class="row-main">
           <text class="row-title" style="font-size: 31px">{{degText}}</text>
-          <text class="row-sub" style="font-size: 23px">{{exactText}} · 震动{{vib ? '开' : '关'}}</text>
+          <text class="row-sub" style="font-size: 23px">{{exactText}}</text>
         </div>
         <text class="row-go t-icon">›</text>
       </div>
     </scroll>
 
-    <div class="foot">
-      <text class="t-info" style="font-size: 23px">byxz</text>
-    </div>
   </div>
 </template>
 
@@ -66,32 +89,26 @@ import appGlobal from '../../common/core/app.js'
 export default {
   data: {
     degText: '弧度制',
-    exactText: '小数显示',
-    vib: true
+    exactText: '小数显示'
   },
 
   onShow() {
-    const app = appGlobal
-    this.degText = app.deg ? '角度制' : '弧度制'
-    this.exactText = app.exact ? '精确显示' : '小数显示'
-    this.vib = !!app.vib
+    // 接进跨页共享宿主：About 页改完回到这里能立刻读到
+    appGlobal.bind(this.$app)
+    this.degText = appGlobal.degOn() ? '角度制' : '弧度制'
+    this.exactText = appGlobal.exactOn() ? '精确显示' : '小数显示'
   },
 
   goCalc() { appGlobal.tap(); router.push({ uri: 'pages/Calc' }) },
   goEq() { appGlobal.tap(); router.push({ uri: 'pages/Eq' }) },
   goPlot() { appGlobal.tap(); router.push({ uri: 'pages/Plot' }) },
+  goChem() { appGlobal.tap(); router.push({ uri: 'pages/Chemistry' }) },
+  goPhys() { appGlobal.tap(); router.push({ uri: 'pages/Physics' }) },
+  goBio() { appGlobal.tap(); router.push({ uri: 'pages/Biology' }) },
   goAbout() { appGlobal.tap(); router.push({ uri: 'pages/About' }) }
 }
 </script>
 
 <style>
   @import '../../common/style/base.css';
-
-  .foot {
-    width: 100%;
-    height: 40px;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-  }
 </style>

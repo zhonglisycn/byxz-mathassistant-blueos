@@ -20,6 +20,10 @@
         <text class="t-echo" style="font-size: 23px">{{echo}}</text>
         <text class="t-dis" style="font-size: 38px">{{shown}}</text>
         <text class="t-help" style="font-size: 22px">{{desc}}</text>
+        <text class="t-busy" if="{{busy}}">{{busyText}}</text>
+        <div class="busybar" if="{{busy}}">
+          <div class="busyfill" style="width:{{busyW}}px"></div>
+        </div>
       </div>
 
             <div class="pad">
@@ -87,6 +91,11 @@
         <div class="key" @click="tap('abs')"><text class="t-key-sm" style="color: #32a3ff">abs</text></div>
         <div class="key" @click="tap('sinh')"><text class="t-key-sm" style="color: #32a3ff">sinh</text></div>
       </div>
+      <div class="prow">
+        <div class="key" @click="tap('ⁿ√')"><text class="t-key-md" style="color: #32a3ff">ⁿ√</text></div>
+        <div class="key" @click="tap(',')"><text class="t-key" style="color: #32a3ff">,</text></div>
+        <div class="key" @click="tap('↑')"><text class="t-key" style="color: #f7b336">↑</text></div>
+      </div>
       </div>
 
       <div class="pill" @click="equals">
@@ -100,8 +109,9 @@
 <script>
 import router from '@blueos.app.appmanager.router'
 import appGlobal from '../../common/core/app.js'
-import { evaluate, displayResult } from '../../common/core/calc.js'
+import { evaluate, displayResult, createFactorialJob } from '../../common/core/calc.js'
 import { descOf } from '../../common/core/keys.js'
+import { LIMITS, fits, clipCursor, clipText } from '../../common/core/limits.js'
 
 // 布局：整屏上下滑动，四则运算与特殊计算都排在同一套键盘里（与原版一致），
 // 只是按键放到 39px 一格（4 列 × (39+2×2) = 172px，装进 176px 可用宽度），
@@ -118,7 +128,8 @@ const KEYS = [
   ['10^', 'const'], ['x²', 'fx'], ['x³', 'fx'], ['1/x', 'fx'],
   ['sin', 'fx'], ['cos', 'fx'], ['tan', 'fx'], ['°', 'op'],
   ['asin', 'fx'], ['acos', 'fx'], ['atan', 'fx'], ['√', 'fx'],
-  ['ln', 'fx'], ['log', 'fx'], ['abs', 'fx'], ['sinh', 'fx']
+  ['ln', 'fx'], ['log', 'fx'], ['abs', 'fx'], ['sinh', 'fx'],
+  ['ⁿ√', 'fx'], [',', 'br'], ['↑', 'op']
 ]
 
 const COLOR = {
@@ -143,7 +154,7 @@ function buildKeys() {
 
 /** 按钮标签 → 写进表达式的内部写法（长的函数省略左括号也补上） */
 const APPEND = {
-  '×': '*', '÷': '/', '−': '-', '√': 'sqrt(', 'x²': '^2', 'x³': '^3', '1/x': '^(-1)',
+  '×': '*', '÷': '/', '−': '-', '√': 'sqrt(', 'ⁿ√': 'root(', 'x²': '^2', 'x³': '^3', '1/x': '^(-1)',
   'sin': 'sin(', 'cos': 'cos(', 'tan': 'tan(', 'sinh': 'sinh(',
   'asin': 'asin(', 'acos': 'acos(', 'atan': 'atan(',
   'ln': 'ln(', 'log': 'log(', 'abs': 'abs(', '10^': '*10^'
@@ -157,46 +168,78 @@ export default {
     shown: '0',
     echo: '',
     exact: false,
+    full: false,
     modeText: '小数',
     lastSrc: '',
     lastVal: null,
     lastPlain: '',
+    lastBigExact: '',
     sciOn: false,
-    desc: ''
+    desc: '',
+    busy: false,
+    busyText: '',
+    busyPct: 0,
+    busyW: 0
   },
 
 
   onInit() {
     this.keys = buildKeys()
+    appGlobal.bind(this.$app)
     this.syncMode()
   },
 
   onShow() {
+    // 每次进页都重新接宿主：设置页改的开关立刻生效
+    appGlobal.bind(this.$app)
     this.syncMode()
     this.refresh()
   },
 
   syncMode() {
-    const app = appGlobal
-    this.exact = !!app.exact
-    this.modeText = (this.exact ? '精确' : '小数') + '·' + (app.deg ? '角度' : '弧度')
+    const deg = appGlobal.degOn()
+    this.exact = appGlobal.exactOn()
+    this.full = appGlobal.fullOn()
+    this.modeText = (this.exact ? '精确' : '小数') + '·' + (deg ? '角度' : '弧度')
   },
 
   refresh() {
-    const before = this.expr.slice(0, this.cur)
-    const after = this.expr.slice(this.cur)
-    this.shown = (before + '|' + after) || '0'
+    // 显示层按窗口截断（光标始终可见），内部 expr 不截
+    this.shown = clipCursor(this.expr, this.cur, LIMITS.calcShow) || '0'
     if (!this.expr) { this.echo = ''; return }
-    const r = evaluate(this.expr, { deg: appGlobal.deg })
-    this.echo = r.ok ? ('= ' + displayResult(r, this.exact)) : ''
+    // 大阶乘预估值很便宜，别在每按一个键时都完整算一遍
+    if (this.lastBigExact && this.expr === this.lastPlain) {
+      if (this.exact && this.full) this.shown = this.lastBigExact
+      else this.shown = clipText(this.exact ? this.bigExact(this.lastBigExact) : this.lastPlain, LIMITS.calcShow)
+      this.echo = ''
+      return
+    }
+    const heavy = /^(\d{3,})!$/.exec(this.expr)
+    if (heavy && Number(heavy[1]) >= 100) {
+      this.echo = '按 = 计算 · 约 ' + this.estimateFactDigits(Number(heavy[1])) + ' 位'
+      return
+    }
+    if (/↑↑/.test(this.expr)) {
+      this.echo = '按 = 计算 · 大数箭头'
+      return
+    }
+    const r = evaluate(this.expr, { deg: appGlobal.degOn() })
+    this.echo = r.ok ? ((this.exact && this.full) ? ('= ' + displayResult(r, true, true)) : clipText('= ' + displayResult(r, this.exact, this.full), LIMITS.calcShow)) : ''
+  },
+
+  estimateFactDigits(n) {
+    let d = 0
+    for (let i = 2; i <= n; i++) d += Math.log(i) / Math.LN10
+    return Math.floor(d) + 1
   },
 
   tap(k) {
+    if (this.busy) return
     appGlobal.tap()
     // 按下就提示这个键是干什么的（说明表见 common/core/keys.js）
     const d = descOf(k)
     this.desc = d ? (k + '：' + d) : ''
-    if (k === 'C') { this.expr = ''; this.cur = 0; this.echo = ''; this.lastSrc = ''; this.sciOn = false; this.refresh(); return }
+    if (k === 'C') { this.expr = ''; this.cur = 0; this.echo = ''; this.lastSrc = ''; this.lastBigExact = ''; this.sciOn = false; this.refresh(); return }
     if (k === '◀') { if (this.cur > 0) this.cur--; this.refresh(); return }
     if (k === '▶') { if (this.cur < this.expr.length) this.cur++; this.refresh(); return }
     if (k === '←') {
@@ -208,17 +251,18 @@ export default {
       return
     }
     const add = APPEND[k] || k
-    if (this.expr.length < 160) {
+    if (fits('calcExpr', this.expr.length, add.length)) {
       this.expr = this.expr.slice(0, this.cur) + add + this.expr.slice(this.cur)
       this.cur += add.length
+      this.lastBigExact = ''
       this.refresh()
     }
   },
 
   toggleExact() {
+    if (this.busy) return
     appGlobal.tap()
-    const app = appGlobal
-    app.setExact(!app.exact)
+    appGlobal.setExact(!appGlobal.exactOn())
     this.syncMode()
     this.refresh()
   },
@@ -235,7 +279,7 @@ export default {
   },
 
   equals() {
-    if (!this.expr) return
+    if (!this.expr || this.busy) return
     appGlobal.tap()
     // 已经是上一次的结果：再按等号在「普通 ↔ 科学计数法」之间切换
     if (this.lastSrc && this.expr === this.lastPlain && this.lastVal !== null) {
@@ -247,7 +291,79 @@ export default {
       return
     }
     const src = this.expr
-    const r = evaluate(src, { deg: appGlobal.deg })
+    const heavy = /^(\d{3,})!$/.exec(src)
+    if (heavy && Number(heavy[1]) >= 100) {
+      this.runFactorial(Number(heavy[1]), src)
+      return
+    }
+    if (/↑↑/.test(src)) {
+      this.busy = true
+      this.busyText = '计算中 · 大数箭头'
+      this.busyW = 0
+      const self = this
+      setTimeout(function () {
+        self.doEquals(src)
+        self.busy = false
+        self.busyText = ''
+      }, 30)
+      return
+    }
+    this.doEquals(src)
+  },
+
+  /** 100! 以上分块算，真实百分比更新；算完套用和内核一致的精确/小数格式 */
+  runFactorial(n, src) {
+    if (n > LIMITS.factMax) {
+      this.echo = '阶乘最大支持 ' + LIMITS.factMax
+      return
+    }
+    this.busy = true
+    this.busyPct = 0
+    this.busyW = 0
+    const approx = this.estimateFactDigits(n)
+    this.busyText = '计算中 0% · 约 ' + approx + ' 位'
+    const job = createFactorialJob(n)
+    const self = this
+    function tick() {
+      job.step(40)
+      const pct = job.done() ? 100 : Math.round(job.progress() * 100)
+      self.busyPct = pct
+      self.busyW = Math.round(360 * pct / 100)
+      self.busyText = '计算中 ' + pct + '% · 约 ' + approx + ' 位'
+      if (!job.done()) {
+        setTimeout(tick, 0)
+        return
+      }
+      const s = job.digits()
+      const dec = self.bigSci(s)
+      self.lastSrc = src
+      self.lastVal = null
+      self.lastPlain = dec
+      self.lastBigExact = s
+      self.sciOn = false
+      self.expr = dec
+      self.cur = dec.length
+      if (self.exact && self.full) self.shown = s
+      else self.shown = clipText(self.exact ? self.bigExact(s) : dec, LIMITS.calcShow)
+      self.echo = ''
+      self.busy = false
+      self.busyText = ''
+    }
+    setTimeout(tick, 20)
+  },
+
+  bigSci(s) {
+    if (s.length <= 15) return s
+    return s.charAt(0) + '.' + s.slice(1, 13) + 'e' + (s.length - 1)
+  },
+
+  bigExact(s) {
+    if (s.length <= 48) return s
+    return s.slice(0, 18) + '…' + s.slice(-8) + '（' + s.length + ' 位）'
+  },
+
+  doEquals(src) {
+    const r = evaluate(src, { deg: appGlobal.degOn() })
     if (!r.ok) { this.echo = r.err; return }
     if (r.complex) {
       // 复数没有科学计数法写法，直接给结果
@@ -256,14 +372,14 @@ export default {
       this.lastPlain = ''
       this.sciOn = false
       this.expr = displayResult(r, false)
-      this.shown = displayResult(r, this.exact)
+      this.shown = (this.exact && this.full) ? displayResult(r, true, true) : clipText(displayResult(r, this.exact, this.full), LIMITS.calcShow)
     } else {
       this.lastSrc = src
       this.lastVal = r.re
       this.lastPlain = displayResult(r, false)
       this.sciOn = false
       this.expr = this.lastPlain
-      this.shown = displayResult(r, this.exact)
+      this.shown = (this.exact && this.full) ? displayResult(r, true, true) : clipText(displayResult(r, this.exact, this.full), LIMITS.calcShow)
     }
     this.cur = this.expr.length
     this.echo = ''
@@ -290,6 +406,9 @@ export default {
   .t-echo { color: #8e8e93; width: 100%; text-align: right; }
   .t-help { color: #8b8f96; width: 100%; text-align: right; }
   .t-dis { color: #ffffff; width: 100%; text-align: right; }
+  .t-busy { color: #f7b336; width: 100%; text-align: right; font-size: 20px; }
+  .busybar { width: 360px; height: 6px; margin-top: 5px; border-radius: 3px; background-color: #333333; }
+  .busyfill { height: 6px; border-radius: 3px; background-color: #f7b336; }
 
   /* 键盘：4 列 × (39 + 2×2) = 310px；整屏可滑动，所以可以一直往下排 */
   .pad {
